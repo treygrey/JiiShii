@@ -1,0 +1,839 @@
+# Programming JiiShii Scenes
+
+This is the author-facing vocabulary for JiiShii scenes. Scene files live in
+`src/game/scenes/` and import from the local game shim:
+
+```js
+import {
+  scene,
+  stage,
+  open,
+  close,
+  background,
+  show,
+  hide,
+  move,
+  say,
+  narrate,
+  choice,
+  transition
+} from "../vn.js";
+```
+
+Authors should import from `../vn.js`, not directly from `src/engine`. The shim
+is the stable public surface for game packages.
+
+## From Zero To A Game
+
+The engine is split into reusable engine code and one active game package.
+Most authors should only edit `src/game/`.
+
+```text
+src/
+  engine/              JiiShii runtime, validation, state, saves, audio
+  renderers/           built-in IRL, texting, and streaming renderers
+  ui/                  player shell: title, menus, saves, history, preferences
+  game/                your active game package
+    game.config.js     title screen, first scene, shell labels, storage keys
+    characters.js      global character names/colors/default sides
+    vn.js              author command shim
+    scenes/            scene files, auto-discovered
+    assets/            images, audio, sprites
+    surface-modules/   optional custom surfaces
+    sprite-manifest.json
+```
+
+Basic workflow:
+
+1. Edit `src/game/game.config.js` to name the game and choose the first scene.
+2. Add global characters in `src/game/characters.js`.
+3. Put images/audio/sprites under `src/game/assets/`.
+4. Write scene files in `src/game/scenes/`.
+5. Run the dev server and fix validator warnings/errors.
+6. Build when ready.
+
+Useful commands:
+
+```powershell
+npm.cmd run dev
+npm.cmd run gen:sprites
+npm.cmd run test
+npm.cmd run build
+```
+
+`npm.cmd run dev` starts the local Vite build. `npm.cmd run gen:sprites`
+regenerates `src/game/sprite-manifest.json` after sprite files change. Tests and
+build are the basic health gates.
+
+## Changing The Title Screen
+
+The title screen and player shell read from `src/game/game.config.js`.
+
+```js
+export const GAME_CONFIG = {
+  title: "My Visual Novel",
+  subtitle: "a story about impossible Tuesdays",
+  footer: "demo build",
+  about: "A short description shown in the About overlay.",
+  firstSceneId: "scene_001_start",
+  shell: {
+    saveTitle: "Save Game",
+    loadTitle: "Load Game",
+    autosaveLabel: "Auto-Save",
+    manualSlotCount: 6,
+    manualSlotLabel: "Slot",
+    preferencesTitle: "Preferences",
+    preferencesDefaultsLabel: "Defaults",
+    historyTitle: "History",
+    historyEmptyLabel: "No dialogue yet.",
+    confirmOverwrite: "Overwrite this save slot?",
+    confirmLoad: "Load this save and leave the current moment?",
+    endKicker: "End of scene",
+    endTitle: "To be continued",
+    endDefaultMessage: "The scene has ended.",
+    returnToTitleLabel: "Return to title"
+  },
+  storage: {
+    save: "my-vn-save",
+    autosave: "my-vn-autosave",
+    settings: "my-vn-settings",
+    slotPrefix: "my-vn-save-slot-"
+  }
+};
+```
+
+The important fields:
+
+- `title`: main title screen heading.
+- `subtitle`: title screen subtitle.
+- `footer`: small build/status line on the title screen.
+- `about`: text for the About overlay.
+- `firstSceneId`: scene id used when the player presses Start.
+- `shell`: player-facing menu/save/history/preference labels.
+- `storage`: localStorage keys. Change these for each game so saves do not
+  collide with another JiiShii project.
+
+If the title screen still shows old text, reload the browser after changing
+`game.config.js`.
+
+## Replacing The Starter Game
+
+The active package is `src/game/`. A fresh package shape is also available at:
+
+```text
+templates/game-package/
+```
+
+To start a new game:
+
+1. Keep `src/engine`, `src/renderers`, and `src/ui` alone.
+2. Replace the contents of `src/game` with your game package.
+3. Keep `src/game/vn.js` unless you know you need to expose extra author
+   helpers.
+4. Set `GAME_CONFIG.firstSceneId`.
+5. Add at least one scene with that id.
+
+Files ending in `.example.js`, `.test.js`, `.spec.js`, or starting with `_` are
+ignored by scene/module discovery. That lets you keep examples and private
+scratch files beside real content without registering them.
+
+## Characters
+
+Global character defaults live in `src/game/characters.js`.
+
+```js
+export const GLOBAL_CHARACTERS = {
+  player: {
+    name: "Player",
+    color: "#4a90e2",
+    side: "right"
+  },
+  alex: {
+    name: "Alex",
+    color: "#FB6F92",
+    side: "left",
+    defaultOutfit: "casual",
+    defaultExpression: "neutral"
+  }
+};
+```
+
+Useful fields:
+
+- `name`: display name in dialogue/history.
+- `color`: texting bubble or identity color.
+- `side`: default message side, usually `"left"` for NPCs and `"right"` for
+  the player.
+- `defaultOutfit`: optional sprite outfit fallback.
+- `defaultExpression`: optional sprite expression fallback.
+
+Scene-local character declarations can override or add to globals:
+
+```js
+scene({
+  id: "scene_010",
+  cast: ["me", "alex"],
+  characters: [
+    { id: "alex", name: "Alex", defaultOutfit: "jacket" }
+  ],
+  script: [...]
+});
+```
+
+Use `cast` for ordinary scenes. Use `characters` when a scene needs a local
+override.
+
+## Asset Folders And IDs
+
+Put game assets under `src/game/assets/`.
+
+```text
+src/game/assets/
+  backgrounds/
+  scenes/
+  audio/
+    music/
+    ambience/
+    sfx/
+    voice/
+  sprites/
+```
+
+Image and audio ids are derived from filenames and folders. Spaces, punctuation,
+and hyphens normalize into underscores.
+
+```text
+src/game/assets/backgrounds/demo room/day.png
+```
+
+Can be referenced as:
+
+```js
+background("backgrounds_demo_room_day")
+```
+
+The engine may also create shorter ids when they are unambiguous:
+
+```js
+background("day")
+```
+
+If two files would claim the same short id, the short id is omitted and the
+validator reports explicit alternatives. Files with `OLD` in the path are
+ignored by discovery.
+
+Common asset commands:
+
+```js
+background("demo_room_day")
+cg("demo_cg")
+image("note", "demo_note")
+photo("alex", "demo_photo")
+streamImage("demo_camera")
+music("main_theme")
+sound("door_slam")
+```
+
+## Sprites
+
+Sprites live under `src/game/assets/sprites/<character-id>/`.
+
+Expected layout:
+
+```text
+src/game/assets/sprites/alex/
+  alex_head.png
+  alex_foreground_hair.png
+  outfits/
+    casual.png
+    jacket.png
+  emotions/
+    neutral.png
+    happy.png
+    embarrassed.png
+```
+
+After adding or renaming sprite files, run:
+
+```powershell
+npm.cmd run gen:sprites
+```
+
+That updates `src/game/sprite-manifest.json`, which the runtime uses to resolve
+outfits and expressions.
+
+Sprite authoring example:
+
+```js
+show("alex", { outfit: "casual", expression: "neutral", at: "center" })
+say("alex", "hello", { expression: "happy" })
+move("alex", { at: "right", scale: 1.08 })
+hide("alex", { transition: "fade" })
+```
+
+The validator warns when a character has sprite art but a shown sprite never
+gets an outfit. That usually means the renderer would show a floating head or
+bodyless expression.
+
+## Save, Load, History, And Preferences
+
+The shell is already wired:
+
+- Start
+- Continue
+- Save
+- Load
+- History
+- Preferences
+- Auto
+- Skip
+- rollback/roll-forward
+
+Authors mostly configure labels and storage keys in `GAME_CONFIG`. Scene-entry
+autosaves and save-anywhere manual slots use the engine save envelope. Rollback
+snapshots, save/load, debug overlay, and renderers all project from runner-owned
+state.
+
+Keyboard defaults:
+
+- `Esc`: close top overlay
+- `H`: History
+- `S`: Save
+- `L`: Load
+- `P`: Preferences
+- `A`: Auto
+- `Tab`: Skip
+- `PageUp` / `PageDown`: rollback / roll-forward
+
+## Mental Model
+
+Authors write `stage("irl")`, `stage("texting")`, and `stage("streaming")`
+because that reads naturally in scripts. Internally, these are **surfaces**:
+presentation modules with renderer capabilities, state, commands, validator
+rules, save/load behavior, and rollback projection.
+
+- `stage(id)` replaces the current surface stack.
+- `open(id)` puts another surface over the current one.
+- `close(id)` closes the top overlay and returns to the surface beneath it.
+
+Layers must close in reverse order. If you open texting over a stream, close
+texting before using stream-only commands again:
+
+```js
+stage("streaming")
+streamTitle("First Stream")
+
+open("texting")
+thread("alex")
+say("alex", "are you watching?")
+close("texting")
+
+streamSystem("Chat is live.")
+```
+
+The validator and runtime both enforce this stack. A script that only works by
+accident should fail loudly before a player sees it.
+
+## Scene Shape
+
+```js
+export default scene({
+  id: "scene_010_example",
+  title: "Example Scene",
+  cast: ["me", "alex"],
+  script: [
+    stage("irl"),
+    background("demo_room_day"),
+    show("alex", { outfit: "casual", expression: "neutral", at: "center" }),
+    say("alex", "This is a scene."),
+    transition("Continue", "scene_011_next")
+  ]
+});
+```
+
+Required scene fields:
+
+- `id`: stable scene id used by transitions and saves.
+- `script`: ordered command array.
+
+Common optional fields:
+
+- `title`: save/load metadata and debug readability.
+- `cast`: character ids available in this scene.
+- `characters`: scene-local character declarations or overrides.
+- `mode`: `"production"` or `"test"`. Demo/test/prototype ids are quarantined
+  automatically.
+- `contact`: texting header metadata for phone-style scenes.
+
+The first `cast` entry is the default speaker for `say("line")`. `me` and
+`you` are aliases for the player.
+
+## IRL Surface
+
+IRL is the baseline VN surface: backgrounds, sprites, CGs, foreground images,
+dialogue, narration, choices, audio, and pacing effects.
+
+### Backgrounds
+
+```js
+background("demo_room_day")
+background("demo_room_night", { transition: "cut" })
+background("demo_hall_day", { transition: "fade_to_black", duration: 900 })
+```
+
+Background state is runner-owned, so rollback and save/load restore it from
+state instead of asking the renderer what it happened to show.
+
+Built-in background transitions:
+
+- `cut`
+- `dissolve`
+- `fade_to_black`
+
+Unknown transition names are reported by the validator with suggestions and an
+available-list hint.
+
+### Sprites
+
+```js
+show("alex", {
+  outfit: "casual",
+  expression: "happy",
+  at: "left",
+  flip: true,
+  transition: "dissolve"
+})
+
+expression("alex", "embarrassed")
+move("alex", { at: "right", scale: 1.08 })
+hide("alex", { transition: "moveOutRight" })
+hideAll({ transition: "fade" })
+clearStage({ transition: "fade" })
+```
+
+`show()` is sticky. If Alex is already visible, later
+`show("alex", { expression: "smirk" })` preserves outfit, position, scale,
+flip, alpha, z, and layer unless you change them.
+
+Use `move()` when the character stays visible and only the transform changes.
+
+Sprite state tracked by the runner:
+
+```js
+{
+  id: "alex",
+  outfit: "casual",
+  expression: "neutral",
+  side: "left",
+  flip: false,
+  at: "left",
+  x: null,
+  y: null,
+  scale: 1,
+  alpha: 1,
+  z: null,
+  layer: "characters"
+}
+```
+
+Known position presets include:
+
+- `left`
+- `center`
+- `right`
+- `far-left`
+- `far-right`
+- `nearLeft`
+- `nearRight`
+- `offscreenLeft`
+- `offscreenRight`
+
+Known sprite transition presets include:
+
+- `cut`
+- `dissolve`
+- `fade`
+- `move`
+- `ease`
+- `moveInLeft`
+- `moveInRight`
+- `moveOutLeft`
+- `moveOutRight`
+
+The validator checks transform numbers. `scale` must be greater than zero,
+`alpha` must be between `0` and `1`, `z` must be a finite number, and `x`/`y`
+must be finite numbers or non-empty CSS strings such as `"42%"` or `"8vh"`.
+
+### CGs And Images
+
+Use `cg()` for full event illustrations. Use `image()` for foreground props,
+documents, inserts, UI screenshots, clue photos, and other displayables.
+
+```js
+cg("demo_cg", { transition: "dissolve" })
+clearCg()
+
+image("note", "demo_note", {
+  at: "center",
+  scale: 0.72,
+  fit: "contain",
+  transition: "dissolve"
+})
+moveImage("note", { at: "right", scale: 0.9 })
+clearImage("note")
+```
+
+`image()` is sticky like `show()`. Use `moveImage()` when the asset stays the
+same and only placement or transform changes.
+
+Image `fit` values follow CSS object-fit names:
+
+- `contain`
+- `cover`
+- `fill`
+- `none`
+- `scale-down`
+
+CG/image state is rollback-safe and appears in the debug overlay.
+
+## Dialogue And Narration
+
+```js
+say("alex", "hi")
+say("alex", ["first line", "second line"])
+say("I should not say that out loud.")
+narrate("The room goes quiet.")
+```
+
+On IRL and streaming, `say()` uses the shared VN dialogue box. On texting,
+`say()` becomes chat bubbles. The active surface decides the presentation.
+
+Dialogue and narration are recorded into runner-owned history, so rollback,
+save/load, and the History overlay describe the same read state.
+
+Lower-level helpers are still available for grouped or legacy commands:
+
+```js
+block([text("alex", "first"), text("alex", "second")])
+lineBlock([line("alex", "Spoken line."), line("riley", "Reply.")])
+dialogue("alex", "Direct dialogue command.")
+narration("Centered texting narration item.")
+```
+
+Prefer `say()` and `narrate()` for ordinary prose unless you specifically need
+a grouped block.
+
+## Pacing, Audio, And Effects
+
+```js
+audioScene("quiet_room", { transition: 1200 })
+
+music("main_theme", { fadeIn: 1200 })
+stopMusic({ fadeOut: 600 })
+
+ambience("rain_loop", { fadeIn: 800, volume: 0.45 })
+stopAmbience({ fadeOut: 500 })
+
+sound("door_slam", { volume: 0.8 })
+voice("line_001")
+
+pause(500)
+flash({ color: "rgba(255,255,255,0.75)", duration: 120 })
+shake({ intensity: 16, duration: 320 })
+```
+
+Prefer `audioScene()` for room or mood setup. Audio scenes are named presets in
+`GAME_CONFIG.audioScenes` that set durable music and ambience together:
+
+```js
+audioScenes: {
+  quiet_room: {
+    music: { id: "main_theme", volume: 0.35, loop: true },
+    ambience: { id: "room_tone", volume: 0.25, loop: true }
+  }
+}
+```
+
+Channel semantics:
+
+- `music`: durable, one active track, restored by save/load/rollback.
+- `ambience`: durable, one active loop in v1, restored by save/load/rollback.
+- `sound`: transient one-shot, not replayed during rollback/load reconstruction.
+- `voice`: transient one-shot, replaces current voice, not durable in v1.
+
+Replacing music or ambience crossfades when a fade/transition duration is
+provided. Player preferences include separate master, music, ambience, sound,
+and voice volume sliders. Command-level `volume` values multiply through those
+mixer settings.
+
+`pause()` is a skippable timed beat. A click advances past it. `flash()` and
+`shake()` are transient compositor effects; pair them with `sound()` and
+`pause()` for impact beats.
+
+## Texting Surface
+
+```js
+stage("texting")
+thread("alex")
+say("alex", "home?")
+photo("alex", "demo_photo", { caption: "proof" })
+```
+
+Texting commands only belong on the texting surface. The validator errors if
+you call `thread()` while IRL or streaming is active.
+
+Texting can be opened over another surface:
+
+```js
+stage("irl")
+background("demo_room_day")
+
+open("texting")
+thread("alex")
+say("alex", "look at your phone")
+close("texting")
+
+say("The phone goes dark.")
+```
+
+Texting scrollback is runner-owned so rollback can reconstruct the phone state.
+
+## Streaming Surface
+
+```js
+stage("streaming")
+streamLayout({ streamerName: "Alex", title: "First stream", viewers: 42 })
+streamWindow("live", "demo_camera")
+streamChatBlock([
+  streamChat("viewer1", "first"),
+  streamChat("viewer2", "hello")
+])
+streamSystem("Stream started.")
+streamPost("Keep it friendly.")
+streamTitle("The room settles.")
+```
+
+Streaming chrome, chat, title, image, and window state are runner-owned and
+rollback-safe.
+
+## Choices And Flow
+
+```js
+choice([
+  { text: "Answer honestly.", goto: "honest", set: { trust: "+1" } },
+  { text: "Deflect.", goto: "deflect", showIf: "metAlex" }
+])
+
+mark("honest")
+say("alex", "that helps")
+goto("done")
+
+mark("deflect")
+say("alex", "nice try")
+
+mark("done")
+transition("Continue", "scene_011_next")
+```
+
+Use `mark()` for local labels and `goto()` for local labels or scene ids.
+`transition(text, target)` shows a button. A `null` target ends the current
+scene.
+
+Legacy aliases remain available for old scripts:
+
+- `jump(target)` for `goto(target)`
+- `label(id)` for `mark(id)`
+- `endScene()` for an explicit hard scene end
+
+## State
+
+```js
+set("trust", 1)
+add("trust", 1)
+setFlag("metAlex")
+clearFlag("metAlex")
+roll("die", 1, 6)
+condition({ var: "trust", op: ">=", value: 3, then: "close", else: "guarded" })
+```
+
+Variables, choices, PRNG state, surfaces, visuals, audio, and reader history are
+serialized or snapshotted by the runner. That is why rollback can rebuild the
+same moment instead of guessing from renderer DOM.
+
+## Validation Rules To Remember
+
+- Start rendering with `stage(...)`.
+- Use commands on the surface they belong to.
+- Close overlays in reverse order.
+- Do not duplicate `mark()` names.
+- Do not point `goto()` or `transition()` at missing targets.
+- Give visible sprite characters an outfit.
+- Missing art/audio assets warn, but do not block boot.
+- Scenes whose ids include `demo`, `prototype`, or `test` are quarantined as
+  test scenes unless `mode` says otherwise.
+
+The validator is intentionally author-facing. Its job is to catch mistakes
+while the project boots, before a player finds them mid-scene.
+
+## Adding Scenes
+
+Put scene modules under `src/game/scenes/`. The scene registry is discovered
+automatically by Vite; you should not maintain a hand-written scene index.
+
+Ignored files:
+
+- files ending in `.example.js`
+- files ending in `.test.js` or `.spec.js`
+- files starting with `_`
+
+One file may export one scene or a scene pack array:
+
+```js
+export const chapterOne = [
+  scene({ id: "scene_010_intro", script: [stage("irl"), say("...")] }),
+  scene({ id: "scene_011_followup", script: [stage("irl"), say("...")] })
+];
+```
+
+Pack arrays are strict: every item in the array must be a valid scene. Helper
+exports outside the array are fine. Use
+`src/game/scenes/chapter-pack.example.js` as a copyable starter.
+
+Set the starting scene in `src/game/game.config.js` with `firstSceneId`.
+
+## Adding Assets
+
+Put backgrounds, CGs, phone photos, stream images, music, sounds, voice lines,
+and sprites under `src/game/assets/`.
+
+Image and audio ids are derived from filenames and folders:
+
+```text
+src/game/assets/backgrounds/demo room/day.png
+```
+
+Can be referenced as:
+
+```js
+background("backgrounds_demo_room_day")
+```
+
+Short ids exist only when they are unambiguous. If two files would claim the
+same short id, the engine keeps folder-qualified ids and omits the ambiguous
+short one. Missing or ambiguous ids produce validator warnings with available
+alternatives.
+
+Files with `OLD` in the path are ignored by discovery.
+
+## Adding Surface Modules
+
+Put optional surface modules under `src/game/surface-modules/`. Real modules
+are discovered automatically. Template files ending in `.example.js` are
+ignored; copy `gallery.example.js` when you want a starting point for a phone
+gallery, browser, laptop, or other scripted surface.
+
+A surface module declares:
+
+- stable surface id
+- renderer command support
+- command metadata
+- state lifecycle hooks
+- command handlers
+- optional renderer constructor export
+
+Several related surfaces can live in one module pack:
+
+```js
+export const deviceSurfaces = [phoneSurface, browserSurface, laptopSurface];
+
+export const rendererConstructors = {
+  phone: PhoneRenderer,
+  browser: BrowserRenderer,
+  laptop: LaptopRenderer
+};
+```
+
+Use `stage("phone")`, `open("browser")`, and so on in scripts. In engine
+terminology those are surfaces; in the authoring language, `stage(...)` is the
+verb that activates one.
+
+If a command mutates module state, give it both live and instant reconstruction
+behavior. Live play and rollback/load reconstruction must apply the same state
+mutation.
+
+## Changing The Look
+
+Most player-facing layout and styling lives in `src/styles.css`.
+
+Use `game.config.js` for text/content changes:
+
+- game title
+- subtitle
+- footer
+- About text
+- save/load/history/preferences labels
+- storage namespace
+
+Use `src/styles.css` for visual treatment:
+
+- title screen typography and spacing
+- dialogue box sizing
+- phone/texting presentation
+- stream layout
+- menu and overlay styling
+- color palette
+
+Use renderer files only when the structure of a surface changes:
+
+```text
+src/renderers/irl/irl-renderer.js
+src/renderers/texting/texting-renderer.js
+src/renderers/streaming/streaming-renderer.js
+```
+
+For game-specific scripted interfaces, prefer a surface module in
+`src/game/surface-modules/` instead of editing built-in renderers.
+
+## Debugging While Authoring
+
+Press the backtick key to toggle the debug overlay. It shows:
+
+- current scene id
+- current command index
+- active surface and surface stack
+- next command
+- rollback position
+- visible sprites
+- variables
+
+Common authoring failures:
+
+- `say()` before `stage()`: add a stage command first.
+- `thread()` on IRL: open or stage texting first.
+- `show()` on texting: close texting or stage IRL first.
+- `close("texting")` when streaming is top: close the actual top layer first.
+- missing image/audio id: check the generated asset id or file location.
+- missing sprite outfit/expression: run `npm.cmd run gen:sprites` and check
+  folder names.
+
+## 0-To-100 Checklist
+
+1. Rename the game in `src/game/game.config.js`.
+2. Change `storage` keys so saves are unique to your game.
+3. Set `firstSceneId`.
+4. Define global characters in `src/game/characters.js`.
+5. Add backgrounds, CGs, audio, and sprites under `src/game/assets/`.
+6. Run `npm.cmd run gen:sprites` if you added sprite art.
+7. Write your first scene in `src/game/scenes/`.
+8. Start with `stage("irl")`, `stage("texting")`, or `stage("streaming")`.
+9. Connect scenes with `transition()` or `goto()`.
+10. Add choices/state only after the linear version plays correctly.
+11. Run `npm.cmd run test`.
+12. Run `npm.cmd run build`.
+13. Open the dev server and play from Start through your latest scene.
+14. Fix validator errors first, then warnings.
+15. Package or deploy the `dist/` output when the build is clean.
+
+The engine goal is boring authoring: drop files into the game package, write
+scripts with `../vn.js`, let discovery find the content, and let validation
+complain before players do.

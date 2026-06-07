@@ -1,0 +1,1801 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  background,
+  scene,
+  stage,
+  open,
+  close,
+  transition,
+  set,
+  show,
+  hide,
+  hideAll,
+  clearStage,
+  expression,
+  move,
+  cg,
+  clearCg,
+  image,
+  moveImage,
+  clearImage,
+  ambience,
+  music,
+  stopAmbience,
+  stopMusic,
+  audioScene,
+  sound,
+  voice,
+  pause,
+  flash,
+  shake,
+  say,
+  line,
+  lineBlock,
+  narrate,
+  thread,
+  streamChat,
+  streamChatBlock,
+  streamNarration,
+  streamImage,
+  streamLayout,
+  streamPost,
+  streamSystem,
+  streamTitle,
+  streamWindow
+} from "./commands.js";
+import { createInitialState } from "./state.js";
+import { SceneRunner } from "./runner.js";
+
+/**
+ * Creates a renderer test double that satisfies the renderer contract and
+ * records lifecycle calls.
+ *
+ * @param {string} surface - Surface id.
+ * @param {string[]} commands - Supported command types.
+ * @param {string[]} [projections] - Supported projection method names.
+ * @returns {object} Fake renderer.
+ */
+function fakeRenderer(surface, commands, projections = []) {
+  return {
+    contract: { surface, commands, projections },
+    surface: { id: `${surface}-element` },
+    mount: vi.fn(),
+    unmount: vi.fn(),
+    reset: vi.fn(),
+    renderSpriteState: vi.fn(),
+    renderTextingState: vi.fn(),
+    renderStreamingState: vi.fn(),
+    clearChoices: vi.fn(),
+    setExitTransition: vi.fn(),
+    setImageExitTransition: vi.fn(),
+    setThread: vi.fn(),
+    showTextBlock: vi.fn(),
+    renderTextBlockInstant: vi.fn(),
+    showLineBlock: vi.fn(),
+    renderLineBlockInstant: vi.fn(),
+    setStreamLayout: vi.fn(),
+    setStreamTitle: vi.fn(),
+    setStreamWindow: vi.fn(),
+    showStreamImage: vi.fn(),
+    showStreamChatBlock: vi.fn(),
+    renderStreamChatBlockInstant: vi.fn(),
+    showTransition: vi.fn(),
+    setSaveStatus: vi.fn(),
+    showEnd: vi.fn()
+  };
+}
+
+function fakeRenderers() {
+  return {
+    texting: fakeRenderer("texting", ["textBlock", "thread", "choice", "transition"], ["renderTextingState"]),
+    irl: fakeRenderer(
+      "irl",
+      [
+        "showCharacter",
+        "hideCharacter",
+        "hideAllCharacters",
+        "clearIrlStage",
+        "setCharacterExpression",
+        "moveCharacter",
+        "showIrlImage",
+        "moveIrlImage",
+        "clearIrlImage",
+        "lineBlock",
+        "choice",
+        "transition"
+      ],
+      ["renderSpriteState"]
+    ),
+    streaming: fakeRenderer("streaming", [
+      "streamLayout",
+      "streamImage",
+      "streamChatBlock",
+      "streamNarration",
+      "streamTitle",
+      "streamWindow",
+      "streamSystem",
+      "streamPost",
+      "choice",
+      "transition"
+    ], ["renderStreamingState"])
+  };
+}
+
+function fakeCompositor() {
+  const layers = new Set();
+  return {
+    hasLayer: vi.fn((id) => layers.has(id)),
+    registerLayer: vi.fn((id) => layers.add(id)),
+    unregisterLayer: vi.fn((id) => layers.delete(id)),
+    resolvePreset: vi.fn((surfaceStack) => ({ surfaceStack: [...surfaceStack] })),
+    applyPreset: vi.fn(),
+    hideNarration: vi.fn(),
+    completeNarrationReveal: vi.fn(),
+    showDialogue: vi.fn(),
+    showNarration: vi.fn(),
+    renderDialogueInstant: vi.fn(),
+    playScreenEffect: vi.fn()
+  };
+}
+
+function fakeAudio() {
+  return {
+    sync: vi.fn(),
+    playMusic: vi.fn(),
+    stopMusic: vi.fn(),
+    playAmbience: vi.fn(),
+    stopAmbience: vi.fn(),
+  playSound: vi.fn(),
+  playVoice: vi.fn(),
+  stopTransient: vi.fn(),
+  stopAll: vi.fn()
+  };
+}
+
+/**
+ * Creates a fake gallery surface module for custom module dispatch tests.
+ *
+ * @param {object} [options] - Test hooks.
+ * @param {Function} [options.onGalleryImage] - Handler spy.
+ * @returns {object} Gallery surface module.
+ */
+function gallerySurfaceModule({ onGalleryImage = vi.fn() } = {}) {
+  const handleGalleryImage = ({ runner, command, instant }) => {
+    runner.state.visuals.gallery.images.push({ id: command.id });
+    runner.state.visuals.gallery.selected = command.id;
+    onGalleryImage(command, { instant });
+    runner.projectSurface("gallery", { instant });
+    runner.advanceCommand();
+  };
+
+  return {
+    id: "gallery",
+    renderer: {
+      surface: "gallery",
+      commands: ["galleryImage", "choice", "transition"],
+      projections: ["renderGalleryState"]
+    },
+    commands: {
+      galleryImage: { blocks: false }
+    },
+    state: {
+      create: () => ({ images: [], selected: null }),
+      normalize: (value = {}) => ({
+        images: Array.isArray(value.images) ? structuredClone(value.images) : [],
+        selected: value.selected ?? null
+      }),
+      clone: (value) => structuredClone(value),
+      project: ({ renderer, state, context }) => {
+        renderer.renderGalleryState(state, { instant: context.instant });
+      }
+    },
+    handlers: {
+      galleryImage: {
+        run: handleGalleryImage,
+        instant: handleGalleryImage
+      }
+    }
+  };
+}
+
+/**
+ * Creates a gallery image command for custom module tests.
+ *
+ * @param {string} id - Image id.
+ * @returns {object} Gallery image command.
+ */
+function galleryImage(id) {
+  return { type: "galleryImage", id };
+}
+
+function makeRunner(script, options = {}) {
+  const testScene = scene({
+    id: "runner_test_scene",
+    cast: ["me"],
+    script
+  });
+  const renderers = options.renderers ?? fakeRenderers();
+  const compositor = options.compositor ?? fakeCompositor();
+  const audio = options.audio ?? fakeAudio();
+  const runner = new SceneRunner({
+    initialScene: testScene,
+    initialState: createInitialState(),
+    renderers,
+    compositor,
+    registry: options.registry ?? { [testScene.id]: testScene },
+    surfaceModules: options.surfaceModules,
+    audioScenes: options.audioScenes,
+    onBackground: options.onBackground ?? vi.fn(),
+    onTransition: vi.fn(),
+    audio,
+    storageKeys: options.storageKeys
+  });
+  return { runner, renderers, compositor, audio, scene: testScene };
+}
+
+beforeEach(() => {
+  const store = new Map();
+  vi.stubGlobal("localStorage", {
+    getItem: vi.fn((key) => store.get(key) ?? null),
+    setItem: vi.fn((key, value) => store.set(key, String(value))),
+    removeItem: vi.fn((key) => store.delete(key)),
+    clear: vi.fn(() => store.clear())
+  });
+});
+
+describe("SceneRunner surface stack", () => {
+  it("mounts a stage renderer and updates the surface stack", () => {
+    const { runner, renderers, compositor } = makeRunner([stage("texting")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+
+    expect(runner.surfaceStack).toEqual(["texting"]);
+    expect(runner.state.currentSurface).toBe("texting");
+    expect(renderers.texting.mount).toHaveBeenCalledOnce();
+    expect(compositor.registerLayer).toHaveBeenCalledWith("texting", renderers.texting.surface);
+  });
+
+  it("opens and closes the top surface layer by id", () => {
+    const { runner, renderers, compositor } = makeRunner([
+      stage("streaming"),
+      open("texting"),
+      close("texting")
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting"]);
+    expect(runner.state.currentSurface).toBe("texting");
+    expect(renderers.texting.mount).toHaveBeenCalledOnce();
+
+    runner.executeCommand(runner.scene.script[2]);
+
+    expect(runner.surfaceStack).toEqual(["streaming"]);
+    expect(runner.state.currentSurface).toBe("streaming");
+    expect(renderers.texting.unmount).toHaveBeenCalledOnce();
+    expect(compositor.unregisterLayer).toHaveBeenCalledWith("texting");
+  });
+
+  it("throws when close targets a layer that is not on top", () => {
+    const { runner } = makeRunner([
+      stage("irl"),
+      open("texting"),
+      open("streaming"),
+      close("texting")
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+    runner.executeCommand(runner.scene.script[2]);
+
+    expect(() => runner.executeCommand(runner.scene.script[3])).toThrow(/top layer is "streaming"/);
+  });
+
+  it("mounts a custom registered surface module", () => {
+    const customSurface = {
+      id: "gallery",
+      renderer: {
+        surface: "gallery",
+        commands: ["choice", "transition"],
+        projections: ["renderGalleryState"]
+      },
+      commands: {}
+    };
+    const renderers = {
+      ...fakeRenderers(),
+      gallery: {
+        ...fakeRenderer("gallery", ["choice", "transition"], ["renderGalleryState"]),
+        renderGalleryState: vi.fn()
+      }
+    };
+    const { runner, compositor } = makeRunner([stage("gallery")], {
+      renderers,
+      surfaceModules: [customSurface]
+    });
+
+    runner.executeCommand(runner.scene.script[0]);
+
+    expect(runner.surfaceStack).toEqual(["gallery"]);
+    expect(compositor.registerLayer).toHaveBeenCalledWith("gallery", renderers.gallery.surface);
+  });
+
+  it("initializes and projects custom surface module state", () => {
+    const projectGallery = vi.fn();
+    const customSurface = {
+      id: "gallery",
+      renderer: {
+        surface: "gallery",
+        commands: ["choice", "transition"],
+        projections: ["renderGalleryState"]
+      },
+      commands: {},
+      state: {
+        create: () => ({ images: [], selected: null }),
+        normalize: (value = {}) => ({
+          images: Array.isArray(value.images) ? structuredClone(value.images) : [],
+          selected: value.selected ?? null
+        }),
+        clone: (value) => structuredClone(value),
+        project: ({ renderer, state, context }) => {
+          projectGallery(state, { instant: context.instant });
+          renderer.renderGalleryState(state, { instant: context.instant });
+        }
+      }
+    };
+    const renderers = {
+      gallery: {
+        ...fakeRenderer("gallery", ["choice", "transition"], ["renderGalleryState"]),
+        renderGalleryState: vi.fn()
+      }
+    };
+    const { runner } = makeRunner([stage("gallery")], {
+      renderers,
+      surfaceModules: [customSurface]
+    });
+
+    expect(runner.state.visuals.gallery).toEqual({ images: [], selected: null });
+
+    runner.state.visuals.gallery.images.push({ id: "demo_image" });
+    runner.syncVisualState({ instant: true });
+
+    expect(projectGallery).toHaveBeenCalledWith(
+      { images: [{ id: "demo_image" }], selected: null },
+      { instant: true }
+    );
+    expect(renderers.gallery.renderGalleryState).toHaveBeenCalledWith(
+      { images: [{ id: "demo_image" }], selected: null },
+      { instant: true }
+    );
+  });
+
+  it("runs a custom surface command through module-owned handlers", () => {
+    const onGalleryImage = vi.fn();
+    const customSurface = gallerySurfaceModule({ onGalleryImage });
+    const renderers = {
+      gallery: {
+        ...fakeRenderer("gallery", ["galleryImage", "choice", "transition"], ["renderGalleryState"]),
+        renderGalleryState: vi.fn()
+      }
+    };
+    const { runner } = makeRunner([
+      stage("gallery"),
+      galleryImage("demo_image")
+    ], {
+      renderers,
+      surfaceModules: [customSurface]
+    });
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+
+    expect(runner.state.visuals.gallery).toEqual({
+      images: [{ id: "demo_image" }],
+      selected: "demo_image"
+    });
+    expect(onGalleryImage).toHaveBeenCalledWith(
+      { type: "galleryImage", id: "demo_image" },
+      { instant: false }
+    );
+    expect(renderers.gallery.renderGalleryState).toHaveBeenLastCalledWith(
+      { images: [{ id: "demo_image" }], selected: "demo_image" },
+      { instant: false }
+    );
+  });
+
+  it("replays a custom surface command through the instant module handler", () => {
+    const onGalleryImage = vi.fn();
+    const customSurface = gallerySurfaceModule({ onGalleryImage });
+    const renderers = {
+      gallery: {
+        ...fakeRenderer("gallery", ["galleryImage", "choice", "transition"], ["renderGalleryState"]),
+        renderGalleryState: vi.fn()
+      }
+    };
+    const { runner } = makeRunner([
+      stage("gallery"),
+      galleryImage("demo_image")
+    ], {
+      renderers,
+      surfaceModules: [customSurface]
+    });
+
+    runner.state.currentCommandIndex = 2;
+    runner.replaySceneContextToCurrentCommand();
+
+    expect(runner.state.visuals.gallery).toEqual({
+      images: [{ id: "demo_image" }],
+      selected: "demo_image"
+    });
+    expect(onGalleryImage).toHaveBeenCalledWith(
+      { type: "galleryImage", id: "demo_image" },
+      { instant: true }
+    );
+    expect(renderers.gallery.renderGalleryState).toHaveBeenLastCalledWith(
+      { images: [{ id: "demo_image" }], selected: "demo_image" },
+      { instant: true }
+    );
+  });
+
+  it("throws clearly when staging an unregistered surface", () => {
+    const { runner } = makeRunner([stage("gallery")]);
+
+    expect(() => runner.executeCommand(runner.scene.script[0])).toThrow(/Unknown surface "gallery"/);
+  });
+
+  it("clears mounted surfaces when a transition selects another scene", () => {
+    const nextScene = scene({
+      id: "next_scene",
+      cast: ["me"],
+      script: [stage("texting")]
+    });
+    const { runner, renderers, compositor } = makeRunner([
+      stage("streaming"),
+      open("texting"),
+      transition("Next", "next_scene")
+    ], {
+      registry: {
+        runner_test_scene: null,
+        next_scene: nextScene
+      }
+    });
+    runner.registry.runner_test_scene = runner.scene;
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+    runner.executeCommand(runner.scene.script[2]);
+
+    const onSelect = renderers.texting.showTransition.mock.calls[0][1].onSelect;
+    onSelect();
+
+    expect(renderers.streaming.unmount).toHaveBeenCalledOnce();
+    expect(renderers.texting.unmount).toHaveBeenCalledOnce();
+    expect(compositor.unregisterLayer).toHaveBeenCalledWith("streaming");
+    expect(compositor.unregisterLayer).toHaveBeenCalledWith("texting");
+    expect(runner.state.currentSceneId).toBe("next_scene");
+    expect(runner.surfaceStack).toEqual(["texting"]);
+  });
+
+  it("returns a stable debug snapshot shape", () => {
+    const { runner } = makeRunner([
+      stage("irl"),
+      set("trust", 2)
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.state.sprites.irl.visible = [
+      {
+        id: "alex",
+        outfit: "casual",
+        expression: "happy",
+        side: "left",
+        flip: true,
+        at: "left",
+        x: null,
+        y: null,
+        scale: 1,
+        alpha: 1,
+        z: null,
+        layer: "characters",
+        transition: null
+      }
+    ];
+    runner.state.vars.trust = 2;
+    runner.lastSpeaker = "alex";
+    runner.rollbackBuffer = [{ commandIndex: 0 }];
+    runner.rollbackPos = 0;
+
+    const snapshot = runner.getDebugSnapshot();
+
+    expect(snapshot).toMatchObject({
+      sceneId: "runner_test_scene",
+      commandIndex: 1,
+      commandCount: 2,
+      activeSurface: "irl",
+      surfaceStack: ["irl"],
+      speaker: "alex",
+      vars: { trust: 2 },
+      rollback: { pos: 0, size: 1, rewound: false }
+    });
+    expect(snapshot.sprites).toEqual([
+      {
+        id: "alex",
+        outfit: "casual",
+        expression: "happy",
+        side: "left",
+        flip: true,
+        at: "left",
+        x: null,
+        y: null,
+        scale: 1,
+        alpha: 1,
+        z: null,
+        layer: "characters"
+      }
+    ]);
+  });
+});
+
+describe("SceneRunner audio commands", () => {
+  function completeDialogue(compositor, callIndex = 0) {
+    compositor.showDialogue.mock.calls[callIndex][2].onComplete();
+  }
+
+  it("stores durable music state and calls the audio service", () => {
+    const { runner, audio } = makeRunner([
+      music("theme", { volume: 0.5, loop: true, fadeIn: 400 }),
+      stopMusic({ fadeOut: 250 })
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    expect(runner.state.audio.music).toEqual({
+      id: "theme",
+      volume: 0.5,
+      loop: true,
+      fadeIn: 400,
+      fadeOut: 400
+    });
+    expect(audio.playMusic).toHaveBeenCalledWith(
+      runner.state.audio.music,
+      expect.objectContaining({ fadeIn: 400 })
+    );
+
+    runner.executeCommand(runner.scene.script[1]);
+    expect(runner.state.audio.music).toBeNull();
+    expect(audio.stopMusic).toHaveBeenCalledWith(expect.objectContaining({ fadeOut: 250 }));
+  });
+
+  it("plays sound and voice as one-shot audio without durable state", () => {
+    const { runner, audio } = makeRunner([
+      sound("door_slam", { volume: 0.7 }),
+      voice("voice_line_001")
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+
+    expect(runner.state.audio.music).toBeNull();
+    expect(audio.playSound).toHaveBeenCalledWith({ type: "sound", id: "door_slam", volume: 0.7 });
+    expect(audio.playVoice).toHaveBeenCalledWith({ type: "voice", id: "voice_line_001" });
+  });
+
+  it("stores durable ambience state and calls the audio service", () => {
+    const { runner, audio } = makeRunner([
+      ambience("rain_room", { volume: 0.45, loop: true, fadeIn: 800 }),
+      stopAmbience({ fadeOut: 300 })
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    expect(runner.state.audio.ambience).toEqual({
+      id: "rain_room",
+      volume: 0.45,
+      loop: true,
+      fadeIn: 800,
+      fadeOut: 800
+    });
+    expect(audio.playAmbience).toHaveBeenCalledWith(
+      runner.state.audio.ambience,
+      expect.objectContaining({ fadeIn: 800 })
+    );
+
+    runner.executeCommand(runner.scene.script[1]);
+    expect(runner.state.audio.ambience).toBeNull();
+    expect(audio.stopAmbience).toHaveBeenCalledWith(expect.objectContaining({ fadeOut: 300 }));
+  });
+
+  it("applies audioScene presets as durable music and ambience state", () => {
+    const { runner, audio } = makeRunner([
+      audioScene("demo_room", { transition: 1200 })
+    ], {
+      audioScenes: {
+        demo_room: {
+          music: { id: "club_theme", volume: 0.55 },
+          ambience: { id: "club_room", volume: 0.25 }
+        }
+      }
+    });
+
+    runner.start();
+
+    expect(runner.state.audio).toEqual({
+      music: {
+        id: "club_theme",
+        volume: 0.55,
+        loop: true,
+        fadeIn: 1200,
+        fadeOut: 1200
+      },
+      ambience: {
+        id: "club_room",
+        volume: 0.25,
+        loop: true,
+        fadeIn: 1200,
+        fadeOut: 1200
+      }
+    });
+    expect(audio.playMusic).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "club_theme", fadeIn: 1200 }),
+      expect.objectContaining({ instant: false })
+    );
+    expect(audio.playAmbience).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "club_room", fadeIn: 1200 }),
+      expect.objectContaining({ instant: false })
+    );
+  });
+
+  it("lets direct music commands override an audioScene preset predictably", () => {
+    const { runner } = makeRunner([
+      audioScene("demo_room", { transition: 900 }),
+      music("manual_theme", { volume: 0.7, fadeIn: 300 })
+    ], {
+      audioScenes: {
+        demo_room: {
+          music: { id: "club_theme", volume: 0.55 },
+          ambience: { id: "club_room", volume: 0.25 }
+        }
+      }
+    });
+
+    runner.start();
+
+    expect(runner.state.audio.music).toMatchObject({
+      id: "manual_theme",
+      volume: 0.7,
+      fadeIn: 300,
+      fadeOut: 300
+    });
+    expect(runner.state.audio.ambience).toMatchObject({ id: "club_room" });
+  });
+
+  it("restores music state across rollback without replaying one-shots", () => {
+    const { runner, compositor, audio } = makeRunner([
+      stage("irl"),
+      music("theme"),
+      sound("door_slam"),
+      say("alex", "music"),
+      stopMusic(),
+      say("alex", "quiet")
+    ]);
+
+    runner.start();
+    expect(runner.state.audio.music).toMatchObject({ id: "theme" });
+    expect(audio.playSound).toHaveBeenCalledOnce();
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+    expect(runner.state.audio.music).toBeNull();
+
+    audio.playSound.mockClear();
+    audio.stopAll.mockClear();
+    runner.rollBack();
+
+    expect(runner.state.audio.music).toMatchObject({ id: "theme" });
+    expect(audio.sync).toHaveBeenLastCalledWith(
+      expect.objectContaining({ music: expect.objectContaining({ id: "theme" }) }),
+      { instant: true }
+    );
+    expect(audio.playSound).not.toHaveBeenCalled();
+    expect(audio.stopAll).not.toHaveBeenCalled();
+  });
+
+  it("restores ambience state across rollback", () => {
+    const { runner, compositor, audio } = makeRunner([
+      stage("irl"),
+      ambience("rain_room"),
+      say("alex", "rain"),
+      stopAmbience(),
+      say("alex", "quiet")
+    ]);
+
+    runner.start();
+    expect(runner.state.audio.ambience).toMatchObject({ id: "rain_room" });
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+    expect(runner.state.audio.ambience).toBeNull();
+
+    runner.rollBack();
+
+    expect(runner.state.audio.ambience).toMatchObject({ id: "rain_room" });
+    expect(audio.sync).toHaveBeenLastCalledWith(
+      expect.objectContaining({ ambience: expect.objectContaining({ id: "rain_room" }) }),
+      { instant: true }
+    );
+  });
+});
+
+describe("SceneRunner pause command", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function completeDialogue(compositor, callIndex = 0) {
+    compositor.showDialogue.mock.calls[callIndex][2].onComplete();
+  }
+
+  it("waits for the requested duration before continuing", () => {
+    vi.useFakeTimers();
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      pause(1000),
+      say("alex", "after")
+    ]);
+
+    runner.start();
+
+    expect(runner.state.currentCommandIndex).toBe(1);
+    expect(runner.rollbackBuffer).toHaveLength(1);
+    expect(compositor.showDialogue).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(999);
+    expect(compositor.showDialogue).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+    expect(runner.state.currentCommandIndex).toBe(2);
+  });
+
+  it("lets a player tap skip the remaining pause time", () => {
+    vi.useFakeTimers();
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      pause(5000),
+      say("alex", "skipped")
+    ]);
+
+    runner.start();
+    runner.advance();
+
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+    expect(runner.state.currentCommandIndex).toBe(2);
+
+    vi.advanceTimersByTime(5000);
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+  });
+
+  it("clears pending pause timers during rollback reconstruction", () => {
+    vi.useFakeTimers();
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      say("alex", "before"),
+      pause(1000),
+      say("alex", "after")
+    ]);
+
+    runner.start();
+    completeDialogue(compositor, 0);
+    runner.advance();
+    expect(runner.state.currentCommandIndex).toBe(2);
+
+    runner.rollBack();
+    vi.advanceTimersByTime(1000);
+
+    expect(compositor.showDialogue).toHaveBeenCalledTimes(2);
+    expect(runner.state.currentCommandIndex).toBe(1);
+  });
+});
+
+describe("SceneRunner advance policy", () => {
+  it("treats visible IRL dialogue as advance-ready on the next click", () => {
+    const compositor = fakeCompositor();
+    compositor.showDialogue.mockImplementation((command, speaker, { onComplete }) => {
+      onComplete();
+    });
+    const { runner } = makeRunner([
+      stage("irl"),
+      say("alex", "first"),
+      say("alex", "second")
+    ], { compositor });
+
+    runner.start();
+
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+    expect(compositor.showDialogue.mock.calls[0][0].message).toBe("first");
+    expect(runner.state.currentCommandIndex).toBe(2);
+
+    runner.advance();
+
+    expect(compositor.showDialogue).toHaveBeenCalledTimes(2);
+    expect(compositor.showDialogue.mock.calls[1][0].message).toBe("second");
+    expect(runner.state.currentCommandIndex).toBe(3);
+  });
+});
+
+describe("SceneRunner screen effects", () => {
+  function completeDialogue(compositor, callIndex = 0) {
+    compositor.showDialogue.mock.calls[callIndex][2].onComplete();
+  }
+
+  it("plays flash and shake as transient compositor effects", () => {
+    const { runner, compositor } = makeRunner([
+      flash({ color: "rgba(255,0,0,0.8)", duration: 120 }),
+      shake({ intensity: 18, duration: 240 }),
+      stage("irl"),
+      say("alex", "after")
+    ]);
+
+    runner.start();
+
+    expect(compositor.playScreenEffect).toHaveBeenNthCalledWith(1, {
+      type: "flash",
+      color: "rgba(255,0,0,0.8)",
+      duration: 120
+    });
+    expect(compositor.playScreenEffect).toHaveBeenNthCalledWith(2, {
+      type: "shake",
+      intensity: 18,
+      duration: 240
+    });
+    expect(runner.state.currentCommandIndex).toBe(3);
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+  });
+
+  it("does not replay screen effects during rollback reconstruction", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      say("alex", "before"),
+      flash(),
+      shake(),
+      say("alex", "after")
+    ]);
+
+    runner.start();
+    completeDialogue(compositor, 0);
+    runner.advance();
+    expect(compositor.playScreenEffect).toHaveBeenCalledTimes(2);
+
+    compositor.playScreenEffect.mockClear();
+    runner.rollBack();
+    runner.rollForward();
+
+    expect(compositor.playScreenEffect).not.toHaveBeenCalled();
+  });
+});
+
+describe("SceneRunner rollback sprite state", () => {
+  function completeTextBlock(renderers, callIndex = 0) {
+    renderers.texting.showTextBlock.mock.calls[callIndex][1].onComplete();
+  }
+
+  function completeStreamChat(renderers, callIndex = 0) {
+    renderers.streaming.showStreamChatBlock.mock.calls[callIndex][1].onComplete();
+  }
+
+  function completeDialogue(compositor, callIndex = 0) {
+    compositor.showDialogue.mock.calls[callIndex][2].onComplete();
+  }
+
+  function completeNarration(compositor, callIndex = 0) {
+    compositor.showNarration.mock.calls[callIndex][1].onComplete();
+  }
+
+  it("rolls IRL say expressions backward and forward from state-owned sprites", () => {
+    const { runner, renderers, compositor } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral", side: "left", flip: true }),
+      say("alex", "first", { expression: "happy" }),
+      say("alex", "second", { expression: "smirk" })
+    ]);
+
+    runner.start();
+
+    expect(runner.rollbackBuffer).toHaveLength(1);
+    expect(runner.state.sprites.irl.visible[0]).toMatchObject({
+      id: "alex",
+      expression: "happy",
+      side: "left",
+      flip: true
+    });
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    expect(runner.rollbackBuffer).toHaveLength(2);
+    expect(runner.state.sprites.irl.visible[0].expression).toBe("smirk");
+
+    runner.rollBack();
+
+    expect(runner.state.sprites.irl.visible[0].expression).toBe("happy");
+    expect(renderers.irl.renderSpriteState).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        visible: [expect.objectContaining({ id: "alex", expression: "happy" })]
+      }),
+      expect.objectContaining({ instant: true })
+    );
+
+    runner.rollForward();
+
+    expect(runner.state.sprites.irl.visible[0].expression).toBe("smirk");
+  });
+
+  it("deduplicates rollback snapshots for the same readable command", () => {
+    const { runner } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral" }),
+      say("alex", "same beat")
+    ]);
+
+    runner.start();
+    expect(runner.rollbackBuffer).toHaveLength(1);
+
+    runner.captureBeatSnapshot();
+
+    expect(runner.rollbackBuffer).toHaveLength(1);
+    expect(runner.rollbackBuffer[0].commandIndex).toBe(runner.state.currentCommandIndex);
+  });
+
+  it("steps backward through distinct readable lines instead of repeating the current line", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral" }),
+      say("alex", "first"),
+      say("alex", "second"),
+      say("alex", "third")
+    ]);
+
+    runner.start();
+    completeDialogue(compositor, 0);
+    runner.advance();
+    completeDialogue(compositor, 1);
+    runner.advance();
+
+    expect(runner.rollbackBuffer.map((snapshot) => snapshot.commandIndex)).toEqual([2, 3, 4]);
+
+    runner.rollBack();
+    expect(runner.state.currentCommandIndex).toBe(3);
+    expect(compositor.showDialogue.mock.calls.at(-1)[0].message).toBe("second");
+
+    runner.rollBack();
+    expect(runner.state.currentCommandIndex).toBe(2);
+    expect(compositor.showDialogue.mock.calls.at(-1)[0].message).toBe("first");
+  });
+
+  it("restores and removes sprites when rolling across hide commands", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral", side: "center" }),
+      say("alex", "still here", { expression: "happy" }),
+      hide("alex"),
+      say("me", "gone")
+    ]);
+
+    runner.start();
+    expect(runner.state.sprites.irl.visible.map((sprite) => sprite.id)).toEqual(["alex"]);
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    expect(runner.state.sprites.irl.visible).toEqual([]);
+
+    runner.rollBack();
+    expect(runner.state.sprites.irl.visible.map((sprite) => sprite.id)).toEqual(["alex"]);
+
+    runner.rollForward();
+    expect(runner.state.sprites.irl.visible).toEqual([]);
+  });
+
+  it("rolls IRL move and expression commands backward and forward", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral", at: "left" }),
+      say("alex", "left"),
+      expression("alex", "smirk"),
+      move("alex", { at: "right", scale: 1.08, z: 36 }),
+      say("alex", "right")
+    ]);
+
+    runner.start();
+    expect(runner.state.sprites.irl.visible[0]).toMatchObject({
+      expression: "neutral",
+      at: "left",
+      scale: 1
+    });
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    expect(runner.state.sprites.irl.visible[0]).toMatchObject({
+      expression: "smirk",
+      at: "right",
+      scale: 1.08,
+      z: 36
+    });
+
+    runner.rollBack();
+    expect(runner.state.sprites.irl.visible[0]).toMatchObject({
+      expression: "neutral",
+      at: "left",
+      scale: 1
+    });
+
+    runner.rollForward();
+    expect(runner.state.sprites.irl.visible[0]).toMatchObject({
+      expression: "smirk",
+      at: "right",
+      scale: 1.08,
+      z: 36
+    });
+  });
+
+  it("rolls hideAll backward and forward", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral", at: "left" }),
+      show("riley", { outfit: "stage_outfit", expression: "smug", at: "right" }),
+      say("alex", "crowded"),
+      hideAll(),
+      say("me", "empty")
+    ]);
+
+    runner.start();
+    expect(runner.state.sprites.irl.visible.map((sprite) => sprite.id)).toEqual(["alex", "riley"]);
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    expect(runner.state.sprites.irl.visible).toEqual([]);
+
+    runner.rollBack();
+    expect(runner.state.sprites.irl.visible.map((sprite) => sprite.id)).toEqual(["alex", "riley"]);
+
+    runner.rollForward();
+    expect(runner.state.sprites.irl.visible).toEqual([]);
+  });
+
+  it("rolls clearStage backward and forward across characters and images", () => {
+    const { runner, renderers, compositor } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral", at: "left" }),
+      show("riley", { outfit: "stage_outfit", expression: "smug", at: "right" }),
+      cg("demo_portrait"),
+      image("letter", "demo_portrait", { at: "center" }),
+      say("alex", "full stage"),
+      clearStage({ transition: "fade" }),
+      narrate("empty stage")
+    ]);
+
+    runner.start();
+    expect(runner.state.sprites.irl.visible.map((sprite) => sprite.id)).toEqual(["alex", "riley"]);
+    expect(runner.state.sprites.irl.images.map((entry) => entry.id)).toEqual(["__cg", "letter"]);
+    expect(runner.state.sprites.irl.focus).toBe("alex");
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    expect(runner.state.sprites.irl).toEqual({
+      visible: [],
+      images: [],
+      focus: null
+    });
+    expect(renderers.irl.setExitTransition).toHaveBeenCalledWith("alex", "fade");
+    expect(renderers.irl.setExitTransition).toHaveBeenCalledWith("riley", "fade");
+    expect(renderers.irl.setImageExitTransition).toHaveBeenCalledWith("__cg", "fade");
+    expect(renderers.irl.setImageExitTransition).toHaveBeenCalledWith("letter", "fade");
+
+    runner.rollBack();
+    expect(runner.state.sprites.irl.visible.map((sprite) => sprite.id)).toEqual(["alex", "riley"]);
+    expect(runner.state.sprites.irl.images.map((entry) => entry.id)).toEqual(["__cg", "letter"]);
+
+    runner.rollForward();
+    expect(runner.state.sprites.irl).toEqual({
+      visible: [],
+      images: [],
+      focus: null
+    });
+  });
+
+  it("rolls IRL CGs and image displayables backward and forward", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      cg("demo_portrait", { transition: "dissolve" }),
+      image("letter", "demo_portrait", { at: "center", scale: 0.72 }),
+      say("alex", "look"),
+      clearImage("letter"),
+      clearCg(),
+      say("alex", "gone")
+    ]);
+
+    runner.start();
+    expect(runner.state.sprites.irl.images.map((entry) => entry.id)).toEqual(["__cg", "letter"]);
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    expect(runner.state.sprites.irl.images).toEqual([]);
+
+    runner.rollBack();
+    expect(runner.state.sprites.irl.images).toEqual([
+      expect.objectContaining({ id: "__cg", asset: "demo_portrait", kind: "cg" }),
+      expect.objectContaining({ id: "letter", asset: "demo_portrait", kind: "image" })
+    ]);
+
+    runner.rollForward();
+    expect(runner.state.sprites.irl.images).toEqual([]);
+  });
+
+  it("moves image displayables without changing their asset", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      image("letter", "demo_portrait", { at: "center", scale: 0.72 }),
+      say("alex", "look"),
+      moveImage("letter", { at: "right", scale: 0.9, alpha: 0.7 }),
+      say("alex", "moved")
+    ]);
+
+    runner.start();
+    expect(runner.state.sprites.irl.images[0]).toMatchObject({
+      id: "letter",
+      asset: "demo_portrait",
+      at: "center",
+      scale: 0.72
+    });
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    expect(runner.state.sprites.irl.images[0]).toMatchObject({
+      id: "letter",
+      asset: "demo_portrait",
+      at: "right",
+      scale: 0.9,
+      alpha: 0.7
+    });
+  });
+
+  it("clears focus for narration and restores dialogue focus on rollback", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral" }),
+      say("alex", "look", { expression: "happy" }),
+      narrate("The room goes quiet.")
+    ]);
+
+    runner.start();
+    expect(runner.state.sprites.irl.focus).toBe("alex");
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    expect(runner.state.sprites.irl.focus).toBeNull();
+
+    completeNarration(compositor, 0);
+    runner.rollBack();
+
+    expect(runner.state.sprites.irl.focus).toBe("alex");
+  });
+
+  it("clears stale renderer state when loading from a checkpoint", () => {
+    const { runner, renderers } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral" }),
+      say("alex", "line")
+    ], {
+      storageKeys: {
+        save: "test-save",
+        autosave: "test-autosave",
+        slotPrefix: "test-slot-"
+      }
+    });
+    localStorage.setItem(
+      "test-save",
+      JSON.stringify({
+        currentSceneId: "runner_test_scene",
+        vars: { trust: 1 },
+        rng: 123
+      })
+    );
+
+    runner.start();
+    expect(runner.state.sprites.irl.visible).toHaveLength(1);
+
+    runner.load();
+
+    expect(renderers.irl.reset).toHaveBeenCalled();
+    expect(renderers.irl.unmount).toHaveBeenCalled();
+    expect(runner.state.vars).toEqual({ trust: 1 });
+    expect(runner.state.sprites.irl.visible).toHaveLength(1);
+  });
+
+  it("uses configured storage keys for autosave and manual slots", () => {
+    const { runner } = makeRunner([stage("irl"), say("alex", "line")], {
+      storageKeys: {
+        save: "configured-save",
+        autosave: "configured-autosave",
+        slotPrefix: "configured-slot-"
+      }
+    });
+
+    runner.start();
+    runner.save({ announce: true, slot: 2 });
+
+    expect(localStorage.getItem("configured-autosave")).toBeTruthy();
+    expect(localStorage.getItem("configured-slot-2")).toBeTruthy();
+    expect(localStorage.getItem("jiishii-autosave")).toBeNull();
+    expect(localStorage.getItem("jiishii-save-slot-2")).toBeNull();
+  });
+
+  it("writes versioned scene-entry autosave envelopes with display metadata", () => {
+    const { runner } = makeRunner([stage("irl"), say("alex", "line")], {
+      storageKeys: {
+        save: "metadata-save",
+        autosave: "metadata-autosave",
+        slotPrefix: "metadata-slot-"
+      }
+    });
+
+    runner.start();
+
+    const saved = JSON.parse(localStorage.getItem("metadata-autosave"));
+    expect(saved).toMatchObject({
+      schemaVersion: 1,
+      kind: "scene-entry",
+      metadata: expect.objectContaining({
+        label: "Auto-Save",
+        kind: "scene-entry",
+        sceneId: "runner_test_scene",
+        currentSceneId: "runner_test_scene",
+        sceneTitle: "runner_test_scene",
+        commandIndex: 0,
+        activeSurface: "texting"
+      }),
+      state: expect.objectContaining({
+        currentSceneId: "runner_test_scene",
+        currentCommandIndex: 0,
+        vars: {}
+      })
+    });
+  });
+
+  it("writes manual saves as save-anywhere snapshot envelopes", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral", side: "left" }),
+      say("alex", "first", { expression: "happy" }),
+      say("alex", "second", { expression: "smirk" })
+    ], {
+      storageKeys: {
+        save: "manual-snapshot-save",
+        autosave: "manual-snapshot-autosave",
+        slotPrefix: "manual-snapshot-slot-"
+      }
+    });
+
+    runner.start();
+    completeDialogue(compositor, 0);
+    runner.advance();
+    const result = runner.save({ announce: true, slot: 3 });
+
+    const saved = JSON.parse(localStorage.getItem("manual-snapshot-slot-3"));
+    expect(result).toEqual(expect.objectContaining({ ok: true, kind: "snapshot" }));
+    expect(saved).toMatchObject({
+      schemaVersion: 1,
+      kind: "snapshot",
+      metadata: expect.objectContaining({
+        label: "Slot 3",
+        kind: "snapshot",
+        sceneId: "runner_test_scene",
+        commandIndex: 3,
+        activeSurface: "irl"
+      }),
+      state: expect.objectContaining({
+        currentSceneId: "runner_test_scene",
+        currentCommandIndex: 3,
+        currentSurface: "irl"
+      })
+    });
+    expect(saved.state.sprites.irl.visible[0]).toMatchObject({
+      id: "alex",
+      expression: "smirk"
+    });
+  });
+
+  it("loads a manual save-anywhere slot back to the exact saved beat", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      show("alex", { outfit: "casual", expression: "neutral", side: "left" }),
+      say("alex", "first", { expression: "happy" }),
+      say("alex", "second", { expression: "smirk" })
+    ], {
+      storageKeys: {
+        save: "manual-load-save",
+        autosave: "manual-load-autosave",
+        slotPrefix: "manual-load-slot-"
+      }
+    });
+
+    runner.start();
+    completeDialogue(compositor, 0);
+    runner.advance();
+    runner.save({ announce: true, slot: 1 });
+
+    runner.rollBack();
+    expect(runner.state.sprites.irl.visible[0].expression).toBe("happy");
+    compositor.showDialogue.mockClear();
+
+    const result = runner.load({ slot: 1 });
+
+    expect(result).toEqual(expect.objectContaining({ ok: true, kind: "snapshot" }));
+    expect(runner.state.sprites.irl.visible[0].expression).toBe("smirk");
+    expect(runner.rollbackBuffer.at(-1)).toEqual(
+      expect.objectContaining({
+        commandIndex: 3,
+        currentSurface: "irl"
+      })
+    );
+    expect(compositor.showDialogue).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "second" }),
+      expect.anything(),
+      expect.anything()
+    );
+  });
+
+  it("handles corrupt saves without mutating the current runner state", () => {
+    const { runner, renderers } = makeRunner([stage("irl"), set("trust", 1), say("alex", "line")], {
+      storageKeys: {
+        save: "corrupt-save",
+        autosave: "corrupt-autosave",
+        slotPrefix: "corrupt-slot-"
+      }
+    });
+    localStorage.setItem("corrupt-save", "{bad json");
+
+    runner.start();
+    const before = structuredClone(runner.state);
+    const result = runner.load();
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: false,
+        reason: "corrupt",
+        message: "Save could not be loaded"
+      })
+    );
+    expect(runner.state).toEqual(before);
+    expect(renderers.irl.setSaveStatus).toHaveBeenCalledWith("Save could not be loaded");
+  });
+
+  it("rejects saves for scenes that are not in the registry without mutating state", () => {
+    const { runner, renderers } = makeRunner([stage("irl"), set("trust", 1), say("alex", "line")], {
+      storageKeys: {
+        save: "missing-scene-save",
+        autosave: "missing-scene-autosave",
+        slotPrefix: "missing-scene-slot-"
+      }
+    });
+    localStorage.setItem(
+      "missing-scene-save",
+      JSON.stringify({
+        currentSceneId: "not_registered",
+        vars: { trust: 99 },
+        rng: 321
+      })
+    );
+
+    runner.start();
+    const before = structuredClone(runner.state);
+    const result = runner.load();
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        ok: false,
+        reason: "missing-scene",
+        message: "Saved scene is not available"
+      })
+    );
+    expect(runner.state).toEqual(before);
+    expect(renderers.irl.setSaveStatus).toHaveBeenCalledWith("Saved scene is not available");
+  });
+
+  it("loads from configured legacy save keys when current keys are empty", () => {
+    const { runner } = makeRunner([stage("irl"), say("alex", "line")], {
+      storageKeys: {
+        save: "current-save",
+        autosave: "current-autosave",
+        slotPrefix: "current-slot-",
+        legacySave: "legacy-save"
+      }
+    });
+    localStorage.setItem(
+      "legacy-save",
+      JSON.stringify({
+        currentSceneId: "runner_test_scene",
+        vars: { legacy: true },
+        rng: 321
+      })
+    );
+
+    runner.load();
+
+    expect(runner.state.vars).toEqual({ legacy: true });
+    expect(runner.state.rng).toBe(321);
+  });
+
+  it("rolls background state backward and forward", () => {
+    const onBackground = vi.fn();
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      background("kitchen day", { transition: "cut" }),
+      say("alex", "first"),
+      background("bedroom night", { transition: "fade_to_black", duration: 900 }),
+      say("alex", "second")
+    ], { onBackground });
+
+    runner.start();
+    expect(runner.state.visuals.background).toMatchObject({ id: "kitchen day" });
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+    expect(runner.state.visuals.background).toMatchObject({ id: "bedroom night" });
+
+    runner.rollBack();
+    expect(runner.state.visuals.background).toMatchObject({ id: "kitchen day" });
+    expect(onBackground).toHaveBeenLastCalledWith("kitchen day", expect.objectContaining({ transition: "cut" }));
+
+    runner.rollForward();
+    expect(runner.state.visuals.background).toMatchObject({ id: "bedroom night" });
+  });
+
+  it("restores a snapshot save through rollback reconstruction state", () => {
+    const onBackground = vi.fn();
+    const { runner, renderers, compositor, audio } = makeRunner([
+      stage("irl"),
+      background("kitchen day", { transition: "cut" }),
+      show("alex", { outfit: "casual", expression: "neutral", side: "left", flip: true }),
+      image("letter", "demo_portrait", { at: "right", scale: 0.8 }),
+      music("quiet_theme"),
+      say("alex", "first", { expression: "happy" }),
+      background("bedroom night", { transition: "fade_to_black", duration: 900 }),
+      move("alex", { at: "center", scale: 1.1 }),
+      moveImage("letter", { alpha: 0.5 }),
+      say("alex", "second", { expression: "smirk" })
+    ], {
+      onBackground,
+      storageKeys: {
+        save: "snapshot-save",
+        autosave: "snapshot-autosave",
+        slotPrefix: "snapshot-slot-"
+      }
+    });
+
+    runner.start();
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    const snapshot = runner.createSnapshotSave({ label: "Internal Snapshot" });
+    localStorage.setItem("snapshot-save", JSON.stringify(snapshot));
+
+    runner.applyHideSprite("alex", { instant: true });
+    runner.state.visuals.background = { id: "wrong room", transition: "cut" };
+    renderers.irl.renderSpriteState.mockClear();
+    compositor.showDialogue.mockClear();
+    onBackground.mockClear();
+
+    const result = runner.load();
+
+    expect(result).toEqual(expect.objectContaining({ ok: true, kind: "snapshot" }));
+    expect(runner.state.currentSceneId).toBe("runner_test_scene");
+    expect(runner.rollbackBuffer.at(-1)).toEqual(
+      expect.objectContaining({
+        commandIndex: 9,
+        currentSurface: "irl"
+      })
+    );
+    expect(runner.state.sprites.irl.visible[0]).toMatchObject({
+      id: "alex",
+      expression: "smirk",
+      at: "center",
+      scale: 1.1,
+      side: "left",
+      flip: true
+    });
+    expect(runner.state.sprites.irl.images[0]).toMatchObject({
+      id: "letter",
+      asset: "demo_portrait",
+      alpha: 0.5
+    });
+    expect(runner.state.visuals.background).toMatchObject({ id: "bedroom night" });
+    expect(compositor.showDialogue).toHaveBeenCalledWith(
+      expect.objectContaining({ message: "second" }),
+      expect.anything(),
+      expect.anything()
+    );
+    expect(renderers.irl.renderSpriteState).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        visible: [expect.objectContaining({ id: "alex", expression: "smirk" })]
+      }),
+      expect.objectContaining({ instant: true })
+    );
+    expect(onBackground).toHaveBeenLastCalledWith(
+      "bedroom night",
+      expect.objectContaining({ transition: "cut" })
+    );
+    expect(audio.sync).toHaveBeenCalledWith(
+      expect.objectContaining({
+        music: expect.objectContaining({ id: "quiet_theme" })
+      }),
+      expect.objectContaining({ instant: true })
+    );
+  });
+
+  it("snapshots the visible beat index even when presentation completes immediately", () => {
+    const compositor = fakeCompositor();
+    compositor.showDialogue.mockImplementation((command, speaker, { onComplete }) => {
+      onComplete();
+    });
+    const { runner } = makeRunner([
+      stage("irl"),
+      say("alex", "visible now"),
+      say("alex", "next")
+    ], { compositor });
+
+    runner.start();
+
+    expect(runner.state.currentCommandIndex).toBe(2);
+    expect(runner.rollbackBuffer.at(-1).commandIndex).toBe(1);
+    expect(runner.createSnapshotSave().state.currentCommandIndex).toBe(1);
+  });
+
+  it("treats visual transitions as nonblocking state projections", () => {
+    const { runner, compositor, renderers } = makeRunner([
+      stage("irl"),
+      background("kitchen day", { transition: "fade_to_black", duration: 900 }),
+      show("alex", { outfit: "casual", expression: "neutral", transition: "dissolve" }),
+      move("alex", { at: "right", transition: "dissolve" }),
+      image("letter", "demo_portrait", { transition: "dissolve" }),
+      moveImage("letter", { alpha: 0.6, transition: "dissolve" }),
+      say("alex", "line")
+    ]);
+
+    runner.start();
+
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+    expect(renderers.irl.renderSpriteState).toHaveBeenCalled();
+    expect(runner.state.currentCommandIndex).toBe(6);
+    expect(runner.isWaitingForPlayer).toBe(true);
+  });
+
+  it("rolls texting thread messages from state-owned scrollback", () => {
+    const { runner, renderers } = makeRunner([
+      stage("texting"),
+      thread("alex"),
+      say("alex", "first"),
+      say("alex", "second")
+    ]);
+
+    runner.start();
+    completeTextBlock(renderers, 0);
+    expect(runner.state.visuals.texting.messages.map((message) => message.message)).toEqual(["first"]);
+
+    runner.advance();
+    completeTextBlock(renderers, 1);
+    expect(runner.state.visuals.texting.messages.map((message) => message.message)).toEqual(["first", "second"]);
+
+    runner.rollBack();
+    expect(runner.state.visuals.texting.messages.map((message) => message.message)).toEqual(["first"]);
+    expect(renderers.texting.renderTextingState).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        messages: [expect.objectContaining({ message: "first" })]
+      }),
+      expect.objectContaining({ characters: runner.characters })
+    );
+  });
+
+  it("rolls streaming chrome and chat from state-owned stream state", () => {
+    const { runner, renderers } = makeRunner([
+      stage("streaming"),
+      streamLayout({ streamerName: "Alex", title: "starting", viewers: 10 }),
+      streamWindow("live", "cam_one"),
+      streamChatBlock([streamChat("viewer1", "first")]),
+      streamTitle("later"),
+      streamChatBlock([streamChat("viewer2", "second")])
+    ]);
+
+    runner.start();
+    completeStreamChat(renderers, 0);
+    expect(runner.state.visuals.streaming).toMatchObject({
+      title: "starting",
+      window: { state: "live", image: "cam_one" },
+      chat: [{ id: "viewer1", message: "first" }]
+    });
+
+    runner.advance();
+    completeStreamChat(renderers, 1);
+    expect(runner.state.visuals.streaming.chat.map((message) => message.message)).toEqual(["first", "second"]);
+    expect(runner.state.visuals.streaming.title).toBe("later");
+
+    runner.rollBack();
+    expect(runner.state.visuals.streaming.chat.map((message) => message.message)).toEqual(["first"]);
+    expect(runner.state.visuals.streaming.title).toBe("starting");
+    expect(renderers.streaming.renderStreamingState).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        title: "starting",
+        chat: [expect.objectContaining({ message: "first" })]
+      })
+    );
+  });
+
+  it("records IRL dialogue and narration in runner-owned history", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      say("alex", "hello"),
+      narrate("The room goes quiet.")
+    ]);
+
+    runner.start();
+
+    expect(runner.getHistory()).toEqual([
+      expect.objectContaining({
+        kind: "dialogue",
+        speaker: "alex",
+        name: "alex",
+        message: "hello",
+        surface: "irl"
+      })
+    ]);
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+
+    expect(runner.getHistory()).toEqual([
+      expect.objectContaining({ message: "hello" }),
+      expect.objectContaining({
+        kind: "narration",
+        speaker: null,
+        message: "The room goes quiet.",
+        surface: "irl"
+      })
+    ]);
+  });
+
+  it("records IRL line blocks in runner-owned history", () => {
+    const { runner, renderers } = makeRunner([
+      stage("irl"),
+      lineBlock([
+        line("alex", "first"),
+        line("riley", "second")
+      ])
+    ]);
+
+    runner.start();
+
+    expect(runner.getHistory()).toEqual([
+      expect.objectContaining({
+        kind: "dialogue",
+        speaker: "alex",
+        message: "first",
+        surface: "irl"
+      }),
+      expect.objectContaining({
+        kind: "dialogue",
+        speaker: "riley",
+        message: "second",
+        surface: "irl"
+      })
+    ]);
+    expect(renderers.irl.showLineBlock).toHaveBeenCalledOnce();
+  });
+
+  it("records texting say blocks in runner-owned history", () => {
+    const { runner } = makeRunner([
+      stage("texting"),
+      thread("alex"),
+      say("alex", "phone line")
+    ]);
+
+    runner.start();
+
+    expect(runner.getHistory()).toEqual([
+      expect.objectContaining({
+        kind: "text",
+        speaker: "alex",
+        name: "alex",
+        message: "phone line",
+        surface: "texting"
+      })
+    ]);
+  });
+
+  it("records streaming chat, narration, system, and post lines", () => {
+    const { runner, renderers, compositor } = makeRunner([
+      stage("streaming"),
+      streamSystem("Stream starting."),
+      streamPost("first"),
+      streamChatBlock([streamChat("viewer1", "hello")]),
+      streamNarration("Alex leans toward the camera.")
+    ]);
+
+    runner.start();
+
+    expect(runner.getHistory()).toEqual([
+      expect.objectContaining({ kind: "system", message: "Stream starting.", surface: "streaming" }),
+      expect.objectContaining({ kind: "post", speaker: "me", message: "first", surface: "streaming" }),
+      expect.objectContaining({ kind: "streamChat", speaker: "viewer1", message: "hello", surface: "streaming" })
+    ]);
+
+    completeStreamChat(renderers, 0);
+    runner.advance();
+
+    expect(runner.getHistory()).toEqual([
+      expect.objectContaining({ message: "Stream starting." }),
+      expect.objectContaining({ message: "first" }),
+      expect.objectContaining({ message: "hello" }),
+      expect.objectContaining({ kind: "narration", message: "Alex leans toward the camera.", surface: "streaming" })
+    ]);
+    expect(compositor.showNarration).toHaveBeenCalledOnce();
+  });
+
+  it("rolls reader history backward and forward from snapshots", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      say("alex", "first"),
+      say("alex", "second")
+    ]);
+
+    runner.start();
+    expect(runner.getHistory().map((entry) => entry.message)).toEqual(["first"]);
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+    expect(runner.getHistory().map((entry) => entry.message)).toEqual(["first", "second"]);
+
+    runner.rollBack();
+    expect(runner.getHistory().map((entry) => entry.message)).toEqual(["first"]);
+
+    runner.rollForward();
+    expect(runner.getHistory().map((entry) => entry.message)).toEqual(["first", "second"]);
+  });
+
+  it("reports runner-owned history in the debug snapshot", () => {
+    const { runner } = makeRunner([
+      stage("texting"),
+      say("alex", "debug line")
+    ]);
+
+    runner.start();
+
+    expect(runner.getDebugSnapshot()).toEqual(
+      expect.objectContaining({
+        historySize: 1
+      })
+    );
+  });
+
+  it("records stream image state before the readable image beat completes", () => {
+    const { runner, renderers } = makeRunner([
+      stage("streaming"),
+      streamImage("cam_one")
+    ]);
+
+    runner.start();
+
+    expect(runner.state.visuals.streaming.window).toEqual({
+      state: "live",
+      image: "cam_one"
+    });
+    expect(runner.rollbackBuffer[0].visuals.streaming.window).toEqual({
+      state: "live",
+      image: "cam_one"
+    });
+    expect(renderers.streaming.showStreamImage).toHaveBeenCalledOnce();
+  });
+});
