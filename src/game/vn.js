@@ -44,7 +44,19 @@ export {
   audioScene,
   stopAmbience,
   sound,
+  stopSound,
   voice,
+  phoneButton,
+  phoneApps,
+  phoneNotify,
+  clearPhoneNotify,
+  openPhone,
+  setWallpaper,
+  saveGalleryImage,
+  removeGalleryImage,
+  socialPost,
+  socialFollow,
+  socialLike,
   // Choices & flow
   choice,
   goto,
@@ -85,3 +97,4 @@ export {
 // Text markup: register your own {macro} → CSS class. Built-ins (b/i/u/s/color)
 // always work; define the class for any custom macro in styles.css.
 export { registerMarkup } from "../engine/markup.js";
+export { registerIrlSpriteTransition } from "../engine/irl-stage-direction.js";

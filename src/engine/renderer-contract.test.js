@@ -46,7 +46,10 @@ function validRenderers() {
       "streamPost",
       "choice",
       "transition"
-    ], ["renderStreamingState"])
+    ], ["renderStreamingState"]),
+    phone_home: renderer("phone_home", ["choice", "transition"], ["renderPhoneHomeState"]),
+    gallery: renderer("gallery", ["choice", "transition"], ["renderGalleryState"]),
+    social: renderer("social", ["choice", "transition"], ["renderSocialState"])
   };
 }
 

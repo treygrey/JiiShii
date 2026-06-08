@@ -8,7 +8,7 @@ export const GAME_CONFIG = {
   footer: "starter game package",
   about:
     "A starter package for JiiShii: IRL staging, texting, streaming, rollback, saves, audio, and modular scene discovery.",
-  firstSceneId: "starter_scene",
+  firstSceneId: "scene_phone_tour",
   audioScenes: {
     quiet_room: {
       music: null,

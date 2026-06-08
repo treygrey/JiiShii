@@ -129,6 +129,8 @@ function collectSetVars(registry) {
  * @param {Function} [options.resolveExpression] - Sprite expression resolver.
  * @param {Function} [options.listExpressions] - Sprite expression lister.
  * @param {Function} [options.listOutfits] - Sprite outfit lister.
+ * @param {Function} [options.listBodies] - Sprite body lister.
+ * @param {Function} [options.listMissingRequiredSpriteLayers] - Required sprite-layer checker.
  * @param {Record<string, object>} [options.globalCharacters] - Game character defaults.
  * @param {Record<string, object>} [options.audioScenes] - Audio scene presets.
  * @returns {{ errors: string[], warnings: string[], testWarnings: string[] }}
@@ -163,6 +165,8 @@ export function validateScenes(registry, options = {}) {
       resolveExpression: options.resolveExpression ?? NOOP_RESOLVE,
       listExpressions: options.listExpressions ?? NOOP_LIST,
       listOutfits: options.listOutfits ?? NOOP_LIST,
+      listBodies: options.listBodies ?? NOOP_LIST,
+      listMissingRequiredSpriteLayers: options.listMissingRequiredSpriteLayers ?? NOOP_LIST,
       globalCharacters,
       audioScenes: options.audioScenes ?? {},
       errors: isTest ? testWarnings : errors,
@@ -210,7 +214,7 @@ function validateScene(scene, ctx) {
 
   const resolveTarget = (target) => marks.has(target) || ctx.sceneIds.has(target);
   const alias = (id) => (PLAYER_ALIASES.has(id) ? "player" : id);
-  const hasArt = (id) => ctx.listExpressions(id).length > 0 || ctx.listOutfits(id).length > 0;
+  const hasArt = (id) => ctx.listExpressions(id).length > 0 || ctx.listOutfits(id).length > 0 || ctx.listBodies(id).length > 0;
 
   // Track which shown characters ever get an outfit, to flag bodyless sprites.
   const shownChars = new Set();
@@ -269,6 +273,10 @@ function validateScene(scene, ctx) {
         if (command.expression && hasArt(id) && !ctx.resolveExpression(id, command.expression)) {
           ctx.warnings.push(`${where}: show("${command.id}", { expression: "${command.expression}" }) — "${id}" has no such expression.${didYouMean(command.expression, ctx.listExpressions(id))}`);
         }
+        if (command.body && hasArt(id) && !ctx.listBodies(id).includes(command.body)) {
+          ctx.warnings.push(`${where}: show("${command.id}", { body: "${command.body}" }) - "${id}" has no such body.${didYouMean(command.body, ctx.listBodies(id))} Available: ${ctx.listBodies(id).join(", ") || "(none)"}.`);
+        }
+        validateRequiredSpriteLayers(command, id, where, ctx);
         validateIrlDirectionOptions(command, where, ctx);
         break;
       }
@@ -394,6 +402,10 @@ function validateScene(scene, ctx) {
       case "stopAmbience":
         validateOptionalDuration(command.fadeOut, `${where}: ${command.type}() fadeOut`, ctx);
         break;
+      case "stopSound":
+        validateRequiredString(command.id, `${where}: stopSound() needs a sound handle.`, ctx);
+        validateOptionalDuration(command.fadeOut, `${where}: stopSound() fadeOut`, ctx);
+        break;
       case "pause":
         validateOptionalDuration(command.duration, `${where}: pause() duration`, ctx);
         break;
@@ -405,12 +417,7 @@ function validateScene(scene, ctx) {
         validateOptionalNumber(command.intensity, `${where}: shake() intensity`, ctx, { min: 0 });
         break;
       case "condition":
-        if (command.flag && !ctx.setVars.has(command.flag)) {
-          ctx.warnings.push(`${where}: condition checks flag "${command.flag}", which is never set anywhere.`);
-        }
-        if (command.var && !ctx.setVars.has(command.var)) {
-          ctx.warnings.push(`${where}: condition checks variable "${command.var}", which is never set anywhere.`);
-        }
+        validateConditionCommand(command, where, marks, resolveTarget, ctx);
         break;
       case "label":
         validateRequiredString(command.id, `${where}: mark()/label() needs a name.`, ctx);
@@ -423,6 +430,57 @@ function validateScene(scene, ctx) {
           validateRollRange(command, where, ctx);
         }
         break;
+      case "phoneApps":
+        if (!Array.isArray(command.apps)) {
+          ctx.errors.push(`${where}: phoneApps() needs an array of app ids.`);
+          break;
+        }
+        for (const app of command.apps) {
+          validatePhoneAppId(app, `${where}: phoneApps()`, ctx, { allowHome: false });
+        }
+        break;
+      case "phoneNotify":
+        validatePhoneAppId(command.app, `${where}: phoneNotify()`, ctx, { allowHome: false });
+        break;
+      case "clearPhoneNotify":
+        validatePhoneAppId(command.app, `${where}: clearPhoneNotify()`, ctx, { allowHome: false });
+        break;
+      case "openPhone":
+        validatePhoneAppId(command.app ?? "home", `${where}: openPhone()`, ctx);
+        break;
+      case "setWallpaper":
+        if (command.image != null) {
+          validateRequiredString(command.image, `${where}: setWallpaper() needs an image asset id or null.`, ctx);
+          validateImageAsset(ctx, where, "setWallpaper", command.image);
+        }
+        break;
+      case "saveGalleryImage":
+        validateRequiredString(command.id, `${where}: saveGalleryImage() needs a gallery entry id.`, ctx);
+        validateRequiredString(command.image, `${where}: saveGalleryImage("${command.id ?? ""}") needs an image asset id.`, ctx);
+        validateImageAsset(ctx, where, "saveGalleryImage", command.image);
+        break;
+      case "removeGalleryImage":
+        validateRequiredString(command.id, `${where}: removeGalleryImage() needs a gallery entry id.`, ctx);
+        break;
+      case "socialPost":
+        validateRequiredString(command.id, `${where}: socialPost() needs a post id.`, ctx);
+        if (command.poster != null && !knownSpeakers.has(command.poster)) {
+          ctx.warnings.push(`${where}: socialPost("${command.id ?? ""}") poster "${command.poster}" is not a known character.${didYouMean(command.poster, speakerList)}`);
+        }
+        if (command.image != null) {
+          validateRequiredString(command.image, `${where}: socialPost("${command.id ?? ""}") image must be an image asset id.`, ctx);
+          validateImageAsset(ctx, where, "socialPost", command.image);
+        }
+        break;
+      case "socialFollow":
+        validateRequiredString(command.poster, `${where}: socialFollow() needs a poster id.`, ctx);
+        if (command.poster != null && !knownSpeakers.has(command.poster)) {
+          ctx.warnings.push(`${where}: socialFollow("${command.poster}") is not a known character.${didYouMean(command.poster, speakerList)}`);
+        }
+        break;
+      case "socialLike":
+        validateRequiredString(command.id, `${where}: socialLike() needs a post id.`, ctx);
+        break;
       default:
         break;
     }
@@ -434,6 +492,119 @@ function validateScene(scene, ctx) {
     if (!outfittedChars.has(id) && hasArt(id)) {
       ctx.warnings.push(`${where}: show("${id}") never sets an outfit, so it will render without a body. Add { outfit: "…" } on first show. Outfits: ${ctx.listOutfits(id).join(", ")}.`);
     }
+  }
+}
+
+/**
+ * Validates a phone app id against registered surface modules.
+ *
+ * @param {unknown} app - Candidate app id.
+ * @param {string} where - Author-facing command label.
+ * @param {object} ctx - Validation context.
+ * @param {object} [options] - Validation options.
+ * @param {boolean} [options.allowHome] - Whether "home" is accepted.
+ * @returns {void}
+ */
+function validatePhoneAppId(app, where, ctx, { allowHome = true } = {}) {
+  if (typeof app !== "string" || app.trim().length === 0) {
+    ctx.errors.push(`${where} needs a phone app id.`);
+    return;
+  }
+  if (allowHome && app === "home") {
+    return;
+  }
+  if (ctx.surfaceIds.has(app) && app !== "phone_home") {
+    return;
+  }
+  const known = [...ctx.surfaceIds].filter((id) => id !== "phone_home");
+  if (allowHome) {
+    known.unshift("home");
+  }
+  ctx.errors.push(`${where} uses unknown phone app "${app}".${didYouMean(app, known)} Registered app surfaces: ${known.join(", ") || "(none)"}.`);
+}
+
+/**
+ * Warns when a sprite recipe requires an art layer that the current request
+ * cannot resolve.
+ *
+ * @param {object} command - show() command.
+ * @param {string} id - Normalized character id.
+ * @param {string} where - Scene label.
+ * @param {object} ctx - Shared validation context.
+ * @returns {void}
+ */
+function validateRequiredSpriteLayers(command, id, where, ctx) {
+  const character = ctx.globalCharacters[id] ?? {};
+  const missing = ctx.listMissingRequiredSpriteLayers(id, {
+    outfit: command.outfit ?? character.defaultOutfit ?? "hoodie",
+    expression: command.expression ?? character.defaultExpression ?? "neutral",
+    body: command.body ?? character.defaultBody ?? "default",
+    vars: {}
+  });
+  for (const layer of missing) {
+    ctx.warnings.push(
+      `${where}: show("${command.id}") recipe layer "${layer.id}" needs ${layer.source}/${layer.key}.png, but no such sprite art exists yet.`
+    );
+  }
+}
+
+/**
+ * Validates a structured branch condition and its flow targets.
+ *
+ * @param {object} command - Condition command.
+ * @param {string} where - Scene label.
+ * @param {Set<string>} marks - Local mark ids.
+ * @param {Function} resolveTarget - Target existence checker.
+ * @param {object} ctx - Shared validation context.
+ * @returns {void}
+ */
+function validateConditionCommand(command, where, marks, resolveTarget, ctx) {
+  validateConditionTarget(command.then, "then", where, marks, resolveTarget, ctx);
+  validateConditionTarget(command.else, "else", where, marks, resolveTarget, ctx);
+
+  if (typeof command.if === "function") {
+    return;
+  }
+
+  if (command.flag !== undefined) {
+    validateRequiredString(command.flag, `${where}: condition flag must be a non-empty string.`, ctx);
+    if (command.flag && !ctx.setVars.has(command.flag)) {
+      ctx.warnings.push(`${where}: condition checks flag "${command.flag}", which is never set anywhere.`);
+    }
+    return;
+  }
+
+  if (command.var !== undefined) {
+    validateRequiredString(command.var, `${where}: condition variable must be a non-empty string.`, ctx);
+    if (command.var && !ctx.setVars.has(command.var)) {
+      ctx.warnings.push(`${where}: condition checks variable "${command.var}", which is never set anywhere.`);
+    }
+    if (command.op && !["=", "==", "===", "!=", "!==", ">", ">=", "<", "<="].includes(command.op)) {
+      ctx.errors.push(`${where}: condition op "${command.op}" is not supported. Use one of =, ==, !=, >, >=, <, <=.`);
+    }
+    return;
+  }
+
+  ctx.errors.push(`${where}: condition() needs a flag, var, or if predicate.`);
+}
+
+/**
+ * Validates one condition branch target.
+ *
+ * @param {string} target - Target label or scene id.
+ * @param {string} branchName - Branch field name.
+ * @param {string} where - Scene label.
+ * @param {Set<string>} marks - Local mark ids.
+ * @param {Function} resolveTarget - Target existence checker.
+ * @param {object} ctx - Shared validation context.
+ * @returns {void}
+ */
+function validateConditionTarget(target, branchName, where, marks, resolveTarget, ctx) {
+  if (!validateRequiredString(target, `${where}: condition() needs a ${branchName} target.`, ctx)) {
+    return;
+  }
+  if (!resolveTarget(target)) {
+    ctx.errors.push(`${where}: condition() ${branchName} target "${target}" is not a scene or mark.${didYouMean(target, [...marks, ...ctx.sceneIds])}`);
   }
 }
 
@@ -554,6 +725,21 @@ function validateAudioOptions(command, where, ctx) {
   validateOptionalDuration(command.fadeIn, `${where}: ${command.type}() fadeIn`, ctx);
   validateOptionalDuration(command.fadeOut, `${where}: ${command.type}() fadeOut`, ctx);
   validateOptionalNumber(command.rate, `${where}: ${command.type}() rate`, ctx, { min: 0.01 });
+  validateOptionalDuration(command.duration, `${where}: ${command.type}() duration`, ctx);
+  validateOptionalNumber(command.start, `${where}: ${command.type}() start`, ctx, { min: 0 });
+  validateOptionalNumber(command.end, `${where}: ${command.type}() end`, ctx, { min: 0 });
+  if (command.start != null && command.end != null && command.end <= command.start) {
+    ctx.errors.push(`${where}: ${command.type}() end must be greater than start.`);
+  }
+  if (command.as != null) {
+    validateRequiredString(command.as, `${where}: ${command.type}() as must be a non-empty sound handle.`, ctx);
+  }
+  if (command.handle != null) {
+    validateRequiredString(command.handle, `${where}: ${command.type}() handle must be a non-empty sound handle.`, ctx);
+  }
+  if (command.loop != null && typeof command.loop !== "boolean") {
+    ctx.errors.push(`${where}: ${command.type}() loop must be true or false.`);
+  }
 }
 
 /**

@@ -4,6 +4,25 @@ dist/
 
 # Local/private material
 archive/
+src/game.before-*/
+src/game/**/*.local.*
+src/game/**/*.private.*
+
+# Keep the starter package lightweight; private runtime assets belong in an
+# external game package or ignored archive.
+src/game/assets/audio/**
+!src/game/assets/audio/
+!src/game/assets/audio/.gitkeep
+src/game/assets/backgrounds/**
+!src/game/assets/backgrounds/
+!src/game/assets/backgrounds/.gitkeep
+src/game/assets/scenes/**
+!src/game/assets/scenes/
+!src/game/assets/scenes/.gitkeep
+src/game/assets/sprites/**
+!src/game/assets/sprites/
+!src/game/assets/sprites/.gitkeep
+!src/game/assets/sprites/_default.recipe.js
 
 # Local dev logs
 *.log
@@ -24,4 +43,3 @@ Thumbs.db
 *.save
 *.sav
 *.bak
-

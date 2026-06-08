@@ -46,5 +46,35 @@ function spriteManifestPlugin() {
  */
 export default defineConfig({
   base: "./",
+  build: {
+    rollupOptions: {
+      output: {
+        entryFileNames: "assets/js/[name]-[hash].js",
+        chunkFileNames: "assets/js/[name]-[hash].js",
+        assetFileNames: (assetInfo) => {
+          const assetName = assetInfo.name ?? "";
+          if (/\.(css)$/i.test(assetName)) {
+            return "assets/css/[name]-[hash][extname]";
+          }
+          if (/\.(png|jpe?g|gif|webp|avif|svg)$/i.test(assetName)) {
+            return "assets/img/[name]-[hash][extname]";
+          }
+          if (/\.(mp3|wav|ogg|flac|m4a)$/i.test(assetName)) {
+            return "assets/audio/[name]-[hash][extname]";
+          }
+          if (/\.(woff2?|ttf|otf)$/i.test(assetName)) {
+            return "assets/fonts/[name]-[hash][extname]";
+          }
+          return "assets/misc/[name]-[hash][extname]";
+        }
+      }
+    }
+  },
+  resolve: {
+    preserveSymlinks: true
+  },
+  test: {
+    exclude: ["**/node_modules/**", "**/dist/**", "**/src/game.before-*/**"]
+  },
   plugins: [spriteManifestPlugin()]
 });

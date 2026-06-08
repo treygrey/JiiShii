@@ -1,4 +1,5 @@
 import "./styles.css";
+import "./game/sprite-animations.js";
 import { SCENES, FIRST_SCENE_ID } from "./game/scenes/index.js";
 import { SURFACE_MODULES, SURFACE_RENDERER_CONSTRUCTORS } from "./game/surface-modules/index.js";
 import { GAME_CONFIG } from "./game/game.config.js";
@@ -15,7 +16,9 @@ import {
 import { GLOBAL_CHARACTERS } from "./game/characters.js";
 import {
   listExpressions,
+  listBodies,
   listOutfits,
+  listMissingRequiredSpriteLayers,
   resolveExpression,
   resolveSprite
 } from "./game/sprites.js";
@@ -42,6 +45,9 @@ import { isEditableTarget, resolveShellShortcut } from "./ui/shell-shortcuts.js"
 import { TextingRenderer } from "./renderers/texting/texting-renderer.js";
 import { IrlRenderer } from "./renderers/irl/irl-renderer.js";
 import { StreamingRenderer } from "./renderers/streaming/streaming-renderer.js";
+import { PhoneHomeRenderer } from "./renderers/phone/phone-home-renderer.js";
+import { GalleryRenderer } from "./renderers/phone/gallery-renderer.js";
+import { SocialRenderer } from "./renderers/phone/social-renderer.js";
 
 const GAME = normalizeGameConfig(GAME_CONFIG);
 const SAVE_KEY = GAME.storage.save;
@@ -72,6 +78,7 @@ const END_TITLE = GAME.shell.endTitle;
 const END_DEFAULT_MESSAGE = GAME.shell.endDefaultMessage;
 const MISSING_TARGET_MESSAGE = GAME.shell.missingTargetMessage;
 const RETURN_TO_TITLE_LABEL = GAME.shell.returnToTitleLabel;
+const PHONE_CONFIG = GAME.phone;
 
 /** @type {{ textSpeed: number, autoDelay: number }} */
 const settings = loadSettings();
@@ -87,6 +94,7 @@ appRoot.innerHTML = buildShell();
 const stage = appRoot.querySelector("#game-stage");
 const quickMenu = appRoot.querySelector(".quick-menu");
 const mainMenu = appRoot.querySelector("#main-menu");
+const phoneButton = appRoot.querySelector("[data-phone-button]");
 
 /**
  * Returns the configured manual save-slot key.
@@ -142,6 +150,8 @@ bootMenu();
 wireMainMenu();
 wireQuickMenu();
 wireOverlays();
+wirePhoneButton();
+wirePhoneChromeNavigation();
 refreshContinueState();
 
 // Click anywhere in the play area advances. The quick menu and overlays are
@@ -182,7 +192,7 @@ function tryRollback(direction) {
 window.addEventListener(
   "wheel",
   (event) => {
-    if (event.target.closest?.(".message-list")) {
+    if (event.target.closest?.(".message-list, .phone-app-shell")) {
       return;
     }
     tryRollback(event.deltaY < 0 ? -1 : 1);
@@ -228,7 +238,9 @@ const sceneCheck = validateScenes(SCENES, {
   listAudioIds,
   resolveExpression,
   listExpressions,
-  listOutfits
+  listBodies,
+  listOutfits,
+  listMissingRequiredSpriteLayers
 });
 sceneCheck.warnings.forEach((warning) => console.warn(`[scene check] ${warning}`));
 if (sceneCheck.testWarnings?.length) {
@@ -274,8 +286,14 @@ function buildShell() {
   return `
     <div class="vn-root">
       <div id="game-stage" class="game-stage"></div>
+      <button class="floating-phone-button" type="button" data-phone-button hidden aria-label="Open phone">
+        <span class="floating-phone-glyph" aria-hidden="true"></span>
+        <span class="floating-phone-badge" aria-hidden="true"></span>
+      </button>
 
       <div class="quick-menu" hidden>
+        <button type="button" data-q="back">Back</button>
+        <span class="quick-sep"></span>
         <button type="button" data-q="history">History</button>
         <button type="button" data-q="auto">Auto</button>
         <button type="button" data-q="skip">Skip</button>
@@ -456,6 +474,9 @@ function bootMenu() {
   teardownActiveRunner({ stopAudio: true });
   mainMenu.hidden = false;
   quickMenu.hidden = true;
+  if (phoneButton) {
+    phoneButton.hidden = true;
+  }
   closeAllOverlays();
   clearSurfaces();
   clearBackground();
@@ -493,6 +514,64 @@ function refreshContinueState() {
 }
 
 /**
+ * Wires the optional floating phone button.
+ *
+ * @returns {void}
+ */
+function wirePhoneButton() {
+  phoneButton?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    runner?.togglePhone?.();
+    syncPhoneButton();
+  });
+  window.setInterval(syncPhoneButton, 150);
+}
+
+/**
+ * Routes shared phone OS chrome before individual surfaces treat it as a
+ * story-advance dead zone. This keeps the Android home control reliable for
+ * built-in and custom phone apps.
+ *
+ * @returns {void}
+ */
+function wirePhoneChromeNavigation() {
+  const routePhoneChrome = (event) => {
+    const navTarget = event.target.closest?.("[data-phone-nav]");
+    if (!navTarget || !stage.contains(navTarget)) {
+      return;
+    }
+    event.stopPropagation();
+    if (navTarget.dataset.phoneNav === "home") {
+      runner?.openPhoneApp?.("home");
+      syncPhoneButton();
+    }
+  };
+  document.addEventListener("click", routePhoneChrome, true);
+  document.addEventListener("pointerup", routePhoneChrome, true);
+}
+
+/**
+ * Projects runner phone state into the floating button.
+ *
+ * @returns {void}
+ */
+function syncPhoneButton() {
+  if (!phoneButton) {
+    return;
+  }
+  const phone = runner?.state?.visuals?.phone;
+  const visible = Boolean(
+    PHONE_CONFIG.enabled &&
+    runner &&
+    mainMenu.hidden &&
+    phone?.isButtonEnabled
+  );
+  phoneButton.hidden = !visible;
+  phoneButton.classList.toggle("has-badge", Boolean(runner?.hasUnreadPhoneNotifications?.()));
+  phoneButton.setAttribute("aria-label", runner?.isPhoneOpen?.() ? "Return to story" : "Open phone");
+}
+
+/**
  * Builds a fresh runner + renderers and begins play (new game or loaded save).
  *
  * @param {object} options - Start options.
@@ -518,6 +597,9 @@ function startGame({ load }) {
     texting: new TextingRenderer(stage, rendererOptions),
     irl: new IrlRenderer(stage, rendererOptions),
     streaming: new StreamingRenderer(stage, rendererOptions),
+    phone_home: new PhoneHomeRenderer(stage, rendererOptions),
+    gallery: new GalleryRenderer(stage, rendererOptions),
+    social: new SocialRenderer(stage, rendererOptions),
     ...createDiscoveredSurfaceRenderers(rendererOptions)
   };
 
@@ -544,6 +626,7 @@ function startGame({ load }) {
     surfaceModules: SURFACE_MODULES,
     audioScenes: GAME.audioScenes,
     globalCharacters: GLOBAL_CHARACTERS,
+    phoneConfig: PHONE_CONFIG,
     onIdle: scheduleAuto,
     onTransition: handleSceneEnd,
     onBackground: setBackground,
@@ -572,6 +655,7 @@ function startGame({ load }) {
   } else {
     runner.start();
   }
+  syncPhoneButton();
 }
 
 /**
@@ -637,7 +721,13 @@ function wireQuickMenu() {
  * @returns {void}
  */
 function handleShellAction(action) {
-  if (action === "history") {
+  if (action === "back") {
+    cancelAuto();
+    autoOn = false;
+    skipOn = false;
+    syncToggleButtons();
+    tryRollback(-1);
+  } else if (action === "history") {
     renderHistory();
     setOverlay("history-overlay", true);
   } else if (action === "auto") {

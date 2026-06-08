@@ -126,6 +126,70 @@ describe("BrowserAudioService", () => {
     expect(audioElements[1].volume).toBeCloseTo(0.15);
   });
 
+  it("applies transient crop, fade, loop, and playback rate options", () => {
+    const service = new BrowserAudioService({ resolveAudio });
+
+    service.playSound({
+      id: "blanket",
+      volume: 0.5,
+      start: 250,
+      fadeIn: 120,
+      loop: true,
+      rate: 1.5
+    });
+
+    expect(audioElements[0].currentTime).toBe(0.25);
+    expect(audioElements[0].playbackRate).toBe(1.5);
+    expect(audioElements[0].loop).toBe(true);
+    expect(audioElements[0].volume).toBeCloseTo(0.5);
+  });
+
+  it("treats transient crop start and end as authored milliseconds", () => {
+    vi.useFakeTimers();
+    const service = new BrowserAudioService({ resolveAudio });
+
+    service.playSound({ id: "blanket", start: 250, end: 1000, rate: 1.5 });
+
+    expect(audioElements[0].currentTime).toBe(0.25);
+    vi.advanceTimersByTime(499);
+    expect(audioElements[0].pause).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+
+    expect(audioElements[0].pause).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  it("stops transients after an authored duration", () => {
+    vi.useFakeTimers();
+    const service = new BrowserAudioService({ resolveAudio });
+
+    service.playSound({ id: "door", duration: 500 });
+
+    expect(audioElements[0].pause).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(499);
+    expect(audioElements[0].pause).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+
+    expect(audioElements[0].pause).toHaveBeenCalledOnce();
+    expect(audioElements[0].currentTime).toBe(0);
+    vi.useRealTimers();
+  });
+
+  it("can stop and replace named transient sounds", () => {
+    const service = new BrowserAudioService({ resolveAudio });
+
+    service.playSound({ id: "buzz", as: "phone", loop: true });
+    service.playSound({ id: "buzz_louder", as: "phone", loop: true, fadeOut: 200 });
+
+    expect(audioElements).toHaveLength(2);
+    expect(audioElements[0].pause).toHaveBeenCalledOnce();
+    expect(audioElements[1].url).toBe("/audio/buzz_louder.ogg");
+
+    service.stopSound("phone", { fadeOut: 100 });
+
+    expect(audioElements[1].pause).toHaveBeenCalledOnce();
+  });
+
   it("plays ambience as a durable loop on the ambience channel", () => {
     const service = new BrowserAudioService({
       resolveAudio,

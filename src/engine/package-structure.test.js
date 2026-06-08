@@ -42,7 +42,6 @@ function slash(path) {
 describe("game package structure", () => {
   it("discovers the active game package scenes from src/game", () => {
     expect(SCENES[GAME_CONFIG.firstSceneId]).toBeTruthy();
-    expect(SCENES.starter_scene).toBeTruthy();
     expect(SCENES["scene_example_basic"]).toBeUndefined();
   });
 
@@ -69,6 +68,7 @@ describe("game package structure", () => {
     const templateRoot = join(PROJECT_ROOT, "templates", "game-package");
     expect(existsSync(join(templateRoot, "game.config.js"))).toBe(true);
     expect(existsSync(join(templateRoot, "vn.js"))).toBe(true);
+    expect(existsSync(join(templateRoot, "sprite-animations.js"))).toBe(true);
     expect(existsSync(join(templateRoot, "sprite-manifest.json"))).toBe(true);
     expect(readFileSync(join(templateRoot, "scenes", "starter-scene.js"), "utf8")).toContain(
       'from "../vn.js"'

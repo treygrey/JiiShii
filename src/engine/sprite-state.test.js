@@ -32,6 +32,7 @@ describe("sprite state helpers", () => {
         id: "alex",
         outfit: "casual",
         expression: "neutral",
+        body: "default",
         side: "left",
         flip: true,
         at: "left",
@@ -62,6 +63,7 @@ describe("sprite state helpers", () => {
       id: "alex",
       outfit: "nude",
       expression: "smirk",
+      body: "default",
       side: "right",
       flip: true,
       at: "right",
@@ -96,6 +98,20 @@ describe("sprite state helpers", () => {
       scale: 0.92,
       alpha: 0.8,
       z: 12
+    });
+  });
+
+  it("preserves sticky body fields on partial show updates", () => {
+    const sprites = createSpriteState();
+
+    applyShowCharacter(sprites, { id: "alex", outfit: "casual", body: "guarded" }, characters());
+    applyShowCharacter(sprites, { id: "alex", expression: "smirk" }, characters());
+
+    expect(sprites.irl.visible[0]).toMatchObject({
+      id: "alex",
+      outfit: "casual",
+      expression: "smirk",
+      body: "guarded"
     });
   });
 
@@ -308,6 +324,7 @@ describe("sprite state helpers", () => {
       id: "alex",
       outfit: "nude",
       expression: "happy",
+      body: "default",
       side: null,
       flip: false,
       at: null,

@@ -1,5 +1,6 @@
 const DEFAULT_OUTFIT = "hoodie";
 const DEFAULT_EXPRESSION = "neutral";
+const DEFAULT_BODY = "default";
 const DEFAULT_LAYER = "characters";
 
 const SPRITE_TRANSFORM_FIELDS = ["at", "x", "y", "scale", "alpha", "z", "layer", "transition", "duration", "easing"];
@@ -52,6 +53,7 @@ function normalizeVisibleSprite(sprite = {}) {
     id: sprite.id,
     outfit: sprite.outfit ?? DEFAULT_OUTFIT,
     expression: sprite.expression ?? DEFAULT_EXPRESSION,
+    body: sprite.body ?? DEFAULT_BODY,
     side: sprite.side ?? null,
     flip: Boolean(sprite.flip),
     at: sprite.at ?? null,
@@ -122,6 +124,7 @@ export function applyShowCharacter(sprites, command, characters) {
     id,
     outfit: command.outfit ?? current?.outfit ?? character.defaultOutfit ?? DEFAULT_OUTFIT,
     expression: command.expression ?? current?.expression ?? character.defaultExpression ?? DEFAULT_EXPRESSION,
+    body: command.body ?? current?.body ?? character.defaultBody ?? DEFAULT_BODY,
     side: command.side ?? current?.side ?? null,
     flip: command.flip ?? current?.flip ?? false,
     at: command.at ?? current?.at ?? command.side ?? current?.side ?? null,

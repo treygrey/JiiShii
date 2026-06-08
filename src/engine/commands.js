@@ -321,7 +321,7 @@ export function background(id, options = {}) {
  *   show("alex", { outfit: "hoodie", expression: "happy", side: "left" })
  *   show("riley", { side: "right", flip: true })   // mirror to face into scene
  *
- * Options: `outfit`, `expression`, `side`/`at`, `flip`, transform fields
+ * Options: `outfit`, `expression`, `body`, `side`/`at`, `flip`, transform fields
  * (`x`, `y`, `scale`, `alpha`, `z`, `layer`), and motion fields
  * (`transition`, `duration`, `easing`). Staging and motion fields are sticky:
  * they persist across later show()/expression changes until set again.
@@ -587,10 +587,13 @@ export function stopAmbience(options = {}) {
 }
 
 /**
- * Plays a one-shot sound effect.
+ * Plays a transient sound effect. Add `{ as: "handle" }` when the sound should
+ * be addressable later with stopSound(), such as a looping machine, shower, or
+ * phone buzz that must cut off on a later beat.
  *
  * @param {string} id - Audio asset id.
- * @param {object} [options] - Sound options.
+ * @param {object} [options] - Sound options: volume, fadeIn, fadeOut, rate,
+ * loop, duration, start, end, as. Timing fields are milliseconds.
  * @returns {object} Sound command.
  */
 export function sound(id, options = {}) {
@@ -602,15 +605,194 @@ export function sound(id, options = {}) {
 }
 
 /**
- * Plays a one-shot voice line.
+ * Stops a named transient sound effect that was started with sound(id, { as }).
+ *
+ * @param {string} handle - Author-facing sound handle.
+ * @param {object} [options] - Stop options, e.g. { fadeOut }.
+ * @returns {object} Stop-sound command.
+ */
+export function stopSound(handle, options = {}) {
+  return {
+    type: "stopSound",
+    id: handle,
+    ...options
+  };
+}
+
+/**
+ * Plays a transient voice line, replacing any current voice line.
  *
  * @param {string} id - Audio asset id.
- * @param {object} [options] - Voice options.
+ * @param {object} [options] - Voice options: volume, fadeIn, fadeOut, rate,
+ * duration, start, end. Timing fields are milliseconds.
  * @returns {object} Voice command.
  */
 export function voice(id, options = {}) {
   return {
     type: "voice",
+    id,
+    ...options
+  };
+}
+
+/**
+ * Enables or hides the floating phone button.
+ *
+ * @param {boolean} enabled - True to show the phone button.
+ * @returns {object} Phone button command.
+ */
+export function phoneButton(enabled = true) {
+  return {
+    type: "phoneButton",
+    enabled: Boolean(enabled)
+  };
+}
+
+/**
+ * Replaces the enabled app list for the phone home screen.
+ *
+ * @param {string[]} apps - Enabled phone app ids.
+ * @returns {object} Phone apps command.
+ */
+export function phoneApps(apps) {
+  return {
+    type: "phoneApps",
+    apps
+  };
+}
+
+/**
+ * Adds an unread phone notification for an app.
+ *
+ * @param {string} app - Target app id.
+ * @param {object} [options] - Notification options.
+ * @returns {object} Phone notification command.
+ */
+export function phoneNotify(app, options = {}) {
+  return {
+    type: "phoneNotify",
+    app,
+    ...options
+  };
+}
+
+/**
+ * Marks notifications for an app as read.
+ *
+ * @param {string} app - App id.
+ * @returns {object} Clear notification command.
+ */
+export function clearPhoneNotify(app) {
+  return {
+    type: "clearPhoneNotify",
+    app
+  };
+}
+
+/**
+ * Opens the phone to a specific app.
+ *
+ * @param {"home"|"texting"|"gallery"|"social"} app - App id or home.
+ * @returns {object} Open phone command.
+ */
+export function openPhone(app = "home") {
+  return {
+    type: "openPhone",
+    app
+  };
+}
+
+/**
+ * Sets the phone wallpaper image.
+ *
+ * @param {string|null} image - Image asset id or null.
+ * @returns {object} Wallpaper command.
+ */
+export function setWallpaper(image) {
+  return {
+    type: "setWallpaper",
+    image
+  };
+}
+
+/**
+ * Saves an image into the phone gallery.
+ *
+ * @param {string} id - Stable gallery entry id.
+ * @param {string} image - Image asset id.
+ * @param {object} [options] - Gallery metadata.
+ * @param {string} [options.caption] - Display caption.
+ * @param {string[]} [options.tags] - Gallery sections this image belongs to.
+ * @param {boolean} [options.persistent] - True to survive rollback.
+ * @returns {object} Gallery save command.
+ */
+export function saveGalleryImage(id, image, options = {}) {
+  return {
+    type: "saveGalleryImage",
+    id,
+    image,
+    ...options
+  };
+}
+
+/**
+ * Removes an image from the phone gallery.
+ *
+ * @param {string} id - Stable gallery entry id.
+ * @returns {object} Gallery remove command.
+ */
+export function removeGalleryImage(id) {
+  return {
+    type: "removeGalleryImage",
+    id
+  };
+}
+
+/**
+ * Adds a post to the social feed.
+ *
+ * @param {string} id - Stable post id.
+ * @param {object} options - Post metadata.
+ * @param {number} [options.replies] - Display reply/comment count.
+ * @param {number} [options.reposts] - Display repost/share count.
+ * @param {number} [options.likes] - Display like count.
+ * @param {number} [options.views] - Display view count.
+ * @param {object} [options.metrics] - Optional grouped metrics override.
+ * @returns {object} Social post command.
+ */
+export function socialPost(id, options = {}) {
+  return {
+    type: "socialPost",
+    id,
+    ...options
+  };
+}
+
+/**
+ * Records a player follow action, optionally setting a story flag.
+ *
+ * @param {string} poster - Poster id.
+ * @param {object} [options] - Follow options.
+ * @returns {object} Social follow command.
+ */
+export function socialFollow(poster, options = {}) {
+  return {
+    type: "socialFollow",
+    poster,
+    ...options
+  };
+}
+
+/**
+ * Records a player like action, optionally setting a story flag.
+ *
+ * @param {string} id - Post id.
+ * @param {object} [options] - Like options.
+ * @returns {object} Social like command.
+ */
+export function socialLike(id, options = {}) {
+  return {
+    type: "socialLike",
     id,
     ...options
   };
@@ -707,15 +889,24 @@ export function streamImage(image, options = {}) {
 /**
  * Creates a block of streaming chat messages.
  *
- * @param {Array<object>} messages - Stream chat message items.
+ * Accepts either `streamChatBlock(messages, options)` for quick authoring or
+ * `streamChatBlock(id, messages, options)` when a scene wants a named block.
+ *
+ * @param {string|Array<object>} idOrMessages - Optional block id, or messages.
+ * @param {Array<object>|object} [messagesOrOptions] - Messages or options.
  * @param {object} [options] - Options (e.g. { concurrent: true }).
  * @returns {object} Streaming chat block command.
  */
-export function streamChatBlock(messages, options = {}) {
+export function streamChatBlock(idOrMessages, messagesOrOptions = {}, options = {}) {
+  const hasId = typeof idOrMessages === "string";
+  const messages = hasId ? messagesOrOptions : idOrMessages;
+  const resolvedOptions = hasId ? options : messagesOrOptions;
+
   return {
     type: "streamChatBlock",
-    messages,
-    ...options
+    ...(hasId ? { id: idOrMessages } : {}),
+    messages: Array.isArray(messages) ? messages : [],
+    ...resolvedOptions
   };
 }
 
@@ -1009,8 +1200,9 @@ export function roll(key, min, max) {
 /**
  * Branches on the variable store. Supports three forms:
  *   condition({ flag: "metRiley", then, else })          // truthy var check
- *   condition({ if: (v) => v.gold >= 5, then, else })   // predicate over vars
- *   condition({ var: "die", op: ">=", value: 4, then, else })  // comparison
+ *   condition({ var: "trust", atLeast: 3, then, else }) // author-safe comparison
+ *   condition({ var: "name", hasText: true, then, else }) // non-empty text check
+ *   condition({ if: (v) => v.gold >= 5, then, else })   // advanced JS escape hatch
  *
  * @param {object} definition - Conditional branch definition.
  * @returns {object} Condition command.

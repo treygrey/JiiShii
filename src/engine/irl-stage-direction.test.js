@@ -4,6 +4,7 @@ import {
   hasIrlTransitionPreset,
   listIrlPositionPresets,
   listIrlTransitionPresets,
+  registerIrlSpriteTransition,
   resolveIrlPlacement,
   resolveIrlTransition
 } from "./irl-stage-direction.js";
@@ -50,6 +51,8 @@ describe("IRL stage direction registry", () => {
     expect(hasIrlTransitionPreset("moveInLeft")).toBe(true);
     expect(hasIrlTransitionPreset("not-a-transition")).toBe(false);
     expect(listIrlTransitionPresets()).toContain("moveOutRight");
+    expect(listIrlTransitionPresets()).toContain("replaceDip");
+    expect(listIrlTransitionPresets()).toContain("replaceFlip");
   });
 
   it("resolves transition timing and enter/exit behavior", () => {
@@ -62,7 +65,30 @@ describe("IRL stage direction registry", () => {
       duration: 320,
       exitTo: "offscreenRight"
     });
+    expect(resolveIrlTransition("replaceDip")).toMatchObject({
+      duration: 180,
+      replacement: "dip"
+    });
+    expect(resolveIrlTransition("replaceFlip")).toMatchObject({
+      duration: 320,
+      replacement: "flip"
+    });
     expect(resolveIrlTransition("unknown")).toMatchObject({ duration: 260 });
+  });
+
+  it("registers custom declarative sprite transitions", () => {
+    registerIrlSpriteTransition("testSoftSwap", {
+      duration: 140,
+      easing: "ease-out",
+      replacement: "dip"
+    });
+
+    expect(hasIrlTransitionPreset("testSoftSwap")).toBe(true);
+    expect(resolveIrlTransition("testSoftSwap")).toMatchObject({
+      duration: 140,
+      easing: "ease-out",
+      replacement: "dip"
+    });
   });
 
   it("applies command-level duration and easing overrides to known presets", () => {

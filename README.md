@@ -4,7 +4,11 @@ JiiShii is a browser-native visual novel engine built around scriptable surfaces
 
 ## Current Status
 
-This repository is the clean engine baseline. The bundled game package under `src/game` is intentionally small and neutral so authors can replace it with their own project files.
+JiiShii is currently `0.1.0-alpha.0`. The core architecture is usable, but author-facing APIs and renderer contracts may still change.
+
+This repository is the clean engine baseline. The bundled game package under `src/game` is a neutral guided tour so authors can see the built-in surfaces before replacing it with their own project files.
+
+See `CHANGELOG.md` for the current alpha notes.
 
 ## Quick Start
 
@@ -19,7 +23,7 @@ Then open the local Vite URL shown in the terminal.
 
 ```text
 src/engine/              Engine runtime, validation, state, saves, audio, and command metadata
-src/renderers/           Built-in renderers for IRL, texting, and streaming surfaces
+src/renderers/           Built-in renderers for IRL, texting, streaming, and phone app surfaces
 src/ui/                  Player shell, menus, overlays, debug tools, and browser UI
 src/game/                Active drop-in game package
 templates/game-package/  Minimal starter package for a new game
@@ -76,6 +80,9 @@ npm run gen:sprites # Regenerate sprite manifest
 Start with:
 
 - `docs/PROGRAMMING_SCENES.md`
+- `docs/AUDIO_COOKBOOK.md`
+- `docs/PHONE_APPS_COOKBOOK.md`
+- `docs/SPRITE_COOKBOOK.md`
 - `docs/ENGINE_STRUCTURE.md`
 - `templates/game-package/README.md`
 

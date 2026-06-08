@@ -15,7 +15,7 @@ describe("surface module harness", () => {
   it("registers the built-in surfaces", () => {
     const registry = createSurfaceRegistry();
 
-    expect([...registry.keys()]).toEqual(["irl", "texting", "streaming"]);
+    expect([...registry.keys()]).toEqual(["irl", "texting", "streaming", "phone_home", "gallery", "social"]);
   });
 
   it("exposes command metadata from surface modules", () => {

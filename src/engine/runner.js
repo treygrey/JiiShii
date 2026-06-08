@@ -8,7 +8,7 @@ import {
   cloneAudioState
 } from "./audio-state.js";
 import { appendHistoryEntry, cloneHistoryState } from "./history-state.js";
-import { evalShowIf } from "./showif.js";
+import { authorCompare, evalShowIf, isOn } from "./showif.js";
 import { validateRendererContracts } from "./renderer-contract.js";
 import {
   createSceneEntrySave,
@@ -25,6 +25,9 @@ import {
 import {
   appendStreamChat,
   appendTextMessages,
+  hasUnreadTextThreads,
+  markTextThreadRead,
+  markTextThreadUnread,
   setBackgroundState,
   setStreamLayoutState,
   setStreamTitleState,
@@ -40,6 +43,18 @@ import {
   projectSurfaceState,
   readSurfaceStateSlice
 } from "./surface-modules.js";
+import {
+  addPhoneNotification,
+  clearPhoneNotification,
+  createPhoneState,
+  hasUnreadPhoneNotifications,
+  mergePersistentPhoneState,
+  normalizePhoneState,
+  removeGalleryImageState,
+  saveGalleryImageState,
+  saveSocialPostState,
+  setPhoneApps
+} from "./phone-state.js";
 
 const SAVE_KEY = "jiishii-save";
 const AUTOSAVE_KEY = "jiishii-autosave";
@@ -94,6 +109,7 @@ function createNoopAudioService() {
     playAmbience: () => {},
     stopAmbience: () => {},
     playSound: () => {},
+    stopSound: () => {},
     playVoice: () => {},
     stopTransient: () => {},
     stopAll: () => {}
@@ -124,10 +140,12 @@ export class SceneRunner {
     audio,
     audioScenes = {},
     globalCharacters = {},
+    phoneConfig = {},
     storageKeys
   }) {
     this.surfaceRegistry = createSurfaceRegistry(surfaceModules);
     validateRendererContracts(renderers, this.surfaceRegistry);
+    this.phoneApps = this.createPhoneAppMetadata();
 
     this.scene = initialScene;
     this.state = migrateState({
@@ -146,9 +164,15 @@ export class SceneRunner {
     this.audio = audio ?? createNoopAudioService();
     this.audioScenes = audioScenes;
     this.globalCharacters = globalCharacters;
+    this.phoneConfig = phoneConfig;
     this.storageKeys = normalizeStorageKeys(storageKeys);
+    this.phoneAppHistory = [];
     this.labels = this.createLabelIndex(initialScene.script);
     this.characters = this.buildCharacters(initialScene);
+    this.state.visuals.phone = normalizePhoneState({
+      ...createPhoneState(phoneConfig),
+      ...(this.state.visuals.phone ?? {})
+    }, phoneConfig);
 
     // The surface stack replaces the old single-activeRenderer model. The
     // bottom entry is the "base" surface; pushSurface adds on top without
@@ -156,6 +180,10 @@ export class SceneRunner {
     /** @type {string[]} */
     this.surfaceStack = [];
     this.activeRenderer = null;
+    // Tracks the top surface that was opened through phone navigation instead
+    // of by story script. Texting uses this to decide whether to show the
+    // Messages inbox or the active story conversation.
+    this.phoneNavigationSurface = this.state.phoneNavigationSurface ?? null;
 
     this.isWaitingForPlayer = false;
     this.isFinished = false;
@@ -198,6 +226,7 @@ export class SceneRunner {
       id: sprite.id,
       outfit: sprite.outfit ?? null,
       expression: sprite.expression ?? null,
+      body: sprite.body ?? null,
       side: sprite.side ?? "auto",
       flip: Boolean(sprite.flip),
       at: sprite.at ?? null,
@@ -370,13 +399,13 @@ export class SceneRunner {
   }
 
   /**
-   * Projects all runner-owned visual state into currently mounted renderers.
+   * Projects runner-owned background state into the page backdrop.
    *
    * @param {object} [options] - Projection options.
    * @param {boolean} [options.instant] - Replace visual state without animation.
    * @returns {void}
    */
-  syncVisualState({ instant = false } = {}) {
+  syncBackgroundState({ instant = false } = {}) {
     if (this.state.visuals?.background) {
       this.onBackground(this.state.visuals.background.id, {
         transition: instant ? "cut" : this.state.visuals.background.transition,
@@ -385,12 +414,26 @@ export class SceneRunner {
     } else {
       this.onBackground(null);
     }
+  }
+
+  /**
+   * Projects all runner-owned visual state into currently mounted renderers.
+   *
+   * @param {object} [options] - Projection options.
+   * @param {boolean} [options.instant] - Replace visual state without animation.
+   * @returns {void}
+   */
+  syncVisualState({ instant = false } = {}) {
+    this.syncBackgroundState({ instant });
     projectSurfaceState({
       state: this.state,
       renderers: this.renderers,
       registry: this.surfaceRegistry,
+      surfaceIds: this.surfaceStack.length ? this.surfaceStack : null,
       context: {
         characters: this.characters,
+        vars: this.state.vars ?? {},
+        phoneApps: this.phoneApps,
         instant
       }
     });
@@ -518,6 +561,19 @@ export class SceneRunner {
   }
 
   /**
+   * Stops a named transient sound effect.
+   *
+   * @param {object} command - Stop-sound command.
+   * @returns {void}
+   */
+  stopSound(command) {
+    if (!this.reconstructing) {
+      this.audio.stopSound?.(command.id, { fadeOut: command.fadeOut });
+    }
+    this.advanceCommand();
+  }
+
+  /**
    * Plays a one-shot voice line.
    *
    * @param {object} command - Voice command.
@@ -620,9 +676,155 @@ export class SceneRunner {
       rootState: this.state,
       context: {
         characters: this.characters,
+        vars: this.state.vars ?? {},
+        phoneApps: this.phoneApps,
         instant
       }
     });
+  }
+
+  /**
+   * Builds launcher metadata from registered surface modules. Custom authors can
+   * expose a phone app by registering a normal surface with `phoneApp` metadata.
+   *
+   * @returns {Record<string, object>} Phone app metadata keyed by surface id.
+   */
+  createPhoneAppMetadata() {
+    const apps = {};
+    for (const [id, surface] of this.surfaceRegistry.entries()) {
+      if (surface.phoneApp) {
+        apps[id] = {
+          label: surface.phoneApp.label ?? id,
+          icon: surface.phoneApp.icon ?? null
+        };
+      }
+    }
+    return apps;
+  }
+
+  /**
+   * Returns true when a surface id belongs to the shared phone/app system.
+   *
+   * Texting can be either a story surface or a phone app. The caller decides
+   * which role it is playing from the stack shape.
+   *
+   * @param {string|null} surfaceId - Surface id to inspect.
+   * @returns {boolean} True for phone home or registered phone apps.
+   */
+  isPhoneSurface(surfaceId) {
+    return surfaceId === "phone_home" || Boolean(surfaceId && this.phoneApps?.[surfaceId]);
+  }
+
+  /**
+   * Records which top surface is currently acting as phone navigation overlay.
+   * Keeping this in state makes save/load and rollback preserve app-vs-story
+   * meaning instead of guessing from a surface id.
+   *
+   * @param {string|null} surfaceId - Phone navigation surface, or null.
+   * @returns {void}
+   */
+  setPhoneNavigationSurface(surfaceId) {
+    this.phoneNavigationSurface = surfaceId;
+    this.state.phoneNavigationSurface = surfaceId;
+  }
+
+  /**
+   * Returns true when a stack entry is acting as navigable phone chrome/app UI,
+   * not an authored story surface. Texting is special because authors can use
+   * it as the story itself while it also exists as the Messages app.
+   *
+   * @param {string|null} surfaceId - Surface id to inspect.
+   * @param {number} [index] - Surface stack index.
+   * @returns {boolean} True when the entry should pause story advancement.
+   */
+  isPhoneNavigationLayer(surfaceId, index = this.surfaceStack.length - 1) {
+    if (!surfaceId) {
+      return false;
+    }
+    if (surfaceId === "texting") {
+      return this.phoneNavigationSurface === "texting" && index === this.surfaceStack.length - 1;
+    }
+    return this.isPhoneSurface(surfaceId);
+  }
+
+  /**
+   * Returns true when focus is currently inside phone chrome instead of the
+   * authored story surface.
+   *
+   * @returns {boolean} True when a phone app is open.
+   */
+  isPhoneOpen() {
+    const top = this.surfaceStack[this.surfaceStack.length - 1] ?? this.state.currentSurface ?? null;
+    return this.isPhoneNavigationLayer(top);
+  }
+
+  /**
+   * Returns true when Messages was opened from phone navigation and should
+   * start at the conversation list.
+   *
+   * @returns {boolean} True when the Messages inbox should be shown.
+   */
+  isTextingInboxMode() {
+    const topSurface = this.surfaceStack[this.surfaceStack.length - 1] ?? this.state.currentSurface ?? null;
+    return topSurface === "texting" && this.phoneNavigationSurface === "texting" && this.isPhoneOpen();
+  }
+
+  /**
+   * Returns true when the currently visible texting surface is the authored
+   * story thread, not the Messages app opened through phone navigation.
+   *
+   * @returns {boolean} True when story progress should remain available.
+   */
+  isStoryTextingActive() {
+    const topSurface = this.surfaceStack[this.surfaceStack.length - 1] ?? this.state.currentSurface ?? null;
+    return topSurface === "texting" && !this.isTextingInboxMode();
+  }
+
+  /**
+   * Finds the story surface underneath an open phone app.
+   *
+   * @returns {string|null} Surface id to return to.
+   */
+  getPhoneReturnSurface() {
+    for (let index = this.surfaceStack.length - 1; index >= 0; index -= 1) {
+      const surfaceId = this.surfaceStack[index];
+      if (!this.isPhoneNavigationLayer(surfaceId, index)) {
+        return surfaceId;
+      }
+    }
+    const currentSurface = this.state.currentSurface ?? null;
+    return this.isPhoneSurface(currentSurface) ? "texting" : currentSurface;
+  }
+
+  /**
+   * Toggles the floating phone launcher: open Home from a story surface, or
+   * return to the paused story surface from any phone app.
+   *
+   * @returns {void}
+   */
+  togglePhone() {
+    if (this.isPhoneOpen()) {
+      this.returnToStorySurface();
+      return;
+    }
+    this.openPhoneApp("home");
+  }
+
+  /**
+   * Closes phone app layers and restores the story surface underneath.
+   *
+   * @returns {void}
+   */
+  returnToStorySurface() {
+    const returnSurface = this.getPhoneReturnSurface() ?? "texting";
+    this.phoneAppHistory = [];
+    while (this.surfaceStack.length > 1 && this.isPhoneNavigationLayer(this.surfaceStack.at(-1))) {
+      this.popSurface();
+    }
+    this.setPhoneNavigationSurface(null);
+    if (this.state.currentSurface !== returnSurface && this.surfaceRegistry.has(returnSurface)) {
+      this.setSurface(returnSurface);
+    }
   }
 
   /**
@@ -744,6 +946,7 @@ export class SceneRunner {
       choicesMade: structuredClone(this.state.choicesMade ?? []),
       surfaceStack: [...(this.state.surfaceStack ?? [])],
       currentSurface: this.state.currentSurface ?? null,
+      phoneNavigationSurface: this.state.phoneNavigationSurface ?? null,
       lastSpeaker: this.lastSpeaker,
       audio: cloneAudioState(this.state.audio),
       history: cloneHistoryState(this.state.history),
@@ -775,9 +978,10 @@ export class SceneRunner {
    * @param {object} snap - A rollback snapshot.
    * @returns {void}
    */
-  reconstructTo(snap) {
+  reconstructTo(snap, { preservePersistentPhoneState = true } = {}) {
     this.reconstructing = true;
     this.activeBeatCommandIndex = null;
+    const preservedPhoneState = cloneSurfaceState(this.state, this.surfaceRegistry);
 
     // Tear down whatever is currently mounted (mirror of a scene transition).
     this.teardownMountedSurfaces();
@@ -801,6 +1005,7 @@ export class SceneRunner {
     this.state.history = cloneHistoryState(snap.history);
     this.state.currentCommandIndex = snap.commandIndex;
     this.state.currentSurface = snap.currentSurface ?? "texting";
+    this.setPhoneNavigationSurface(snap.phoneNavigationSurface ?? null);
     const finalSurfaceState = cloneSurfaceState(snap, this.surfaceRegistry);
     const emptySurfaceState = createSurfaceState(this.surfaceRegistry);
     this.state.sprites = emptySurfaceState.sprites;
@@ -816,6 +1021,9 @@ export class SceneRunner {
     this.runUntilBlocked();
     this.state.sprites = finalSurfaceState.sprites;
     this.state.visuals = finalSurfaceState.visuals;
+    if (preservePersistentPhoneState) {
+      mergePersistentPhoneState(this.state, preservedPhoneState);
+    }
     this.lastSpeaker = snap.lastSpeaker ?? this.lastSpeaker;
     this.syncVisualState({ instant: true });
     this.syncAudioState({ instant: true });
@@ -824,6 +1032,10 @@ export class SceneRunner {
   }
 
   advance() {
+    if (this.isPhoneOpen()) {
+      return;
+    }
+
     // While parked on a rolled-back beat, a tap walks forward toward the live
     // edge rather than advancing the story.
     if (this.isRewound) {
@@ -854,6 +1066,15 @@ export class SceneRunner {
     if (this.isWaitingForPlayer && !this.isFinished) {
       this.activeBeatCommandIndex = null;
       this.isWaitingForPlayer = false;
+      this.runUntilBlocked();
+      return;
+    }
+
+    // A healthy runner should not be idle on an executable command, but load,
+    // rollback, and surface jumps all touch the same state machine. If a future
+    // edge case parks here, the next player tap should recover instead of
+    // leaving the current surface looking like it silently ended.
+    if (!this.isFinished && this.scene.script[this.state.currentCommandIndex]) {
       this.runUntilBlocked();
     }
   }
@@ -929,14 +1150,48 @@ export class SceneRunner {
       currentCommandIndex: 0,
       currentSurface: "texting",
       surfaceStack: [],
+      phoneNavigationSurface: null,
       vars: structuredClone(this.state.vars),
       rng: this.state.rng,
       choicesMade: structuredClone(this.state.choicesMade ?? []),
       audio: cloneAudioState(this.state.audio),
       history: [],
-      ...cloneSurfaceState(createInitialState(), this.surfaceRegistry),
+      ...cloneSurfaceState(this.state, this.surfaceRegistry),
       timestamp
     };
+    localStorage.setItem(
+      this.storageKeys.autosave,
+      JSON.stringify(createSceneEntrySave({
+        state: this.state,
+        checkpoint: this.checkpoint,
+        surfaceRegistry: this.surfaceRegistry,
+        label: "Auto-Save",
+        sceneTitle: this.scene?.title ?? this.scene?.id ?? this.state.currentSceneId,
+        timestamp
+      }))
+    );
+  }
+
+  /**
+   * Mirrors durable phone-app state into the scene-entry checkpoint.
+   *
+   * Phone apps can be changed by player UI after the last readable scene beat:
+   * set wallpaper, follow someone, like a post, or browse newly saved gallery
+   * images. The checkpoint remains the source for scene-entry autosaves, so it
+   * needs an affirmative copy of these durable display slices.
+   *
+   * @returns {void}
+   */
+  updatePhoneCheckpointState() {
+    if (this.reconstructing || !this.checkpoint?.visuals) {
+      return;
+    }
+    const timestamp = Date.now();
+    this.checkpoint.visuals.phone = structuredClone(this.state.visuals.phone);
+    this.checkpoint.visuals.gallery = structuredClone(this.state.visuals.gallery);
+    this.checkpoint.visuals.social = structuredClone(this.state.visuals.social);
+    this.checkpoint.visuals.texting = structuredClone(this.state.visuals.texting);
+    this.checkpoint.timestamp = timestamp;
     localStorage.setItem(
       this.storageKeys.autosave,
       JSON.stringify(createSceneEntrySave({
@@ -1048,6 +1303,8 @@ export class SceneRunner {
         ...saved,
         sceneId: saved.currentSceneId,
         commandIndex: saved.currentCommandIndex
+      }, {
+        preservePersistentPhoneState: false
       });
       this.rollbackBuffer = [];
       this.rollbackPos = -1;
@@ -1074,12 +1331,20 @@ export class SceneRunner {
     this.state = migrateState({
       ...createInitialState(),
       currentSceneId: this.scene.id,
+      currentCommandIndex: saved.currentCommandIndex ?? 0,
+      currentSurface: saved.currentSurface ?? "texting",
+      surfaceStack: structuredClone(saved.surfaceStack ?? []),
+      phoneNavigationSurface: saved.phoneNavigationSurface ?? null,
       vars: saved.vars ?? {},
       rng: saved.rng,
       choicesMade: structuredClone(saved.choicesMade ?? []),
-      history: []
+      audio: cloneAudioState(saved.audio),
+      history: cloneHistoryState(saved.history),
+      sprites: structuredClone(saved.sprites),
+      visuals: structuredClone(saved.visuals)
     });
     Object.assign(this.state, normalizeSurfaceState(this.state, this.surfaceRegistry));
+    this.setPhoneNavigationSurface(null);
     this.isFinished = false;
     this.isWaitingForPlayer = false;
     this.blockingInput = false;
@@ -1272,6 +1537,14 @@ export class SceneRunner {
       return;
     }
 
+    if (
+      this.applyPhoneCommand(command) ||
+      this.applyGalleryCommand(command) ||
+      this.applySocialCommand(command)
+    ) {
+      return;
+    }
+
     if (this.executeSurfaceCommand(command)) {
       return;
     }
@@ -1303,6 +1576,11 @@ export class SceneRunner {
 
     if (command.type === "sound") {
       this.playSound(command);
+      return;
+    }
+
+    if (command.type === "stopSound") {
+      this.stopSound(command);
       return;
     }
 
@@ -1354,18 +1632,21 @@ export class SceneRunner {
 
     if (command.type === "setFlag") {
       this.state.vars[command.key] = command.value;
+      this.syncIrlSprites({ instant: this.reconstructing });
       this.state.currentCommandIndex += 1;
       return;
     }
 
     if (command.type === "setVar") {
       applyVarMutations(this.state.vars, { [command.key]: command.value });
+      this.syncIrlSprites({ instant: this.reconstructing });
       this.state.currentCommandIndex += 1;
       return;
     }
 
     if (command.type === "roll") {
       this.state.vars[command.key] = rollInt(this.state, command.min, command.max);
+      this.syncIrlSprites({ instant: this.reconstructing });
       this.state.currentCommandIndex += 1;
       return;
     }
@@ -1445,6 +1726,11 @@ export class SceneRunner {
       throw new Error(`No renderer registered for surface "${surfaceId}".`);
     }
 
+    // A hard story-stage switch owns the player's visual context. Clear any
+    // previous shared dialogue box so stale text from the old surface cannot
+    // invisibly keep the next surface looking blocked or finished.
+    this.compositor.hideNarration();
+
     // Tear down ALL stacked surfaces (not just the active one)
     for (const stackedId of this.surfaceStack) {
       const renderer = this.renderers[stackedId];
@@ -1456,6 +1742,7 @@ export class SceneRunner {
 
     // Reset the stack to just this surface
     this.surfaceStack = [surfaceId];
+    this.setPhoneNavigationSurface(null);
     this.state.currentSurface = surfaceId;
     this.state.surfaceStack = [...this.surfaceStack];
     this.activeRenderer = next;
@@ -1521,7 +1808,8 @@ export class SceneRunner {
     const preset = this.compositor.resolvePreset(this.surfaceStack);
     this.compositor.applyPreset(preset);
 
-    this.syncVisualState({ instant: this.reconstructing });
+    this.syncBackgroundState({ instant: this.reconstructing });
+    this.projectSurface(surfaceId, { instant: this.reconstructing });
   }
 
   /**
@@ -1536,12 +1824,18 @@ export class SceneRunner {
       return; // Can't pop the base surface
     }
 
+    const poppedIndex = this.surfaceStack.length - 1;
     const poppedId = this.surfaceStack.pop();
     const poppedRenderer = this.renderers[poppedId];
+    const poppedPhoneNavigationLayer = this.isPhoneNavigationLayer(poppedId, poppedIndex);
 
     if (poppedRenderer) {
       poppedRenderer.unmount?.();
       this.compositor.unregisterLayer(poppedId);
+    }
+
+    if (poppedPhoneNavigationLayer) {
+      this.setPhoneNavigationSurface(null);
     }
 
     // Restore the new top of stack as active
@@ -1596,6 +1890,7 @@ export class SceneRunner {
     this.lastSpeaker = speakerId;
 
     if (this.state.currentSurface === "texting") {
+      this.ensureTextingThreadForSpeaker(speakerId);
       const texts = lines.map((line, index) => ({
         kind: "text",
         id: speakerId,
@@ -1629,9 +1924,10 @@ export class SceneRunner {
     const speakerId = this.aliasSpeaker(command.speaker ?? this.defaultVoice());
     const lines = command.lines ?? [command.message ?? ""];
     if (this.state.currentSurface === "texting") {
+      this.ensureTextingThreadForSpeaker(speakerId);
       const texts = lines.map((line) => ({ kind: "text", id: speakerId, message: line }));
-      this.activeRenderer.renderTextBlockInstant({ texts }, { characters: this.characters });
-      appendTextMessages(this.state.visuals, texts);
+      const renderedTexts = appendTextMessages(this.state.visuals, texts);
+      this.activeRenderer.renderTextBlockInstant({ texts: renderedTexts }, { characters: this.characters });
       return;
     }
     if (this.state.currentSurface === "irl") {
@@ -1692,6 +1988,437 @@ export class SceneRunner {
   }
 
   /**
+   * Starts a texting thread from an incoming/outgoing speaker when authored
+   * script uses say() without an explicit thread() command first.
+   *
+   * @param {string} speakerId - Resolved speaker id for the current say beat.
+   * @returns {void}
+   */
+  ensureTextingThreadForSpeaker(speakerId) {
+    if (this.state.visuals.texting?.currentThreadId) {
+      return;
+    }
+    if (!speakerId || speakerId === "player" || speakerId === "me") {
+      return;
+    }
+    const contact = this.resolveThreadContact({ id: speakerId });
+    setTextingThread(this.state.visuals, contact);
+    this.activeRenderer?.setThread?.(contact);
+  }
+
+  /**
+   * Converts scene-level phone contact metadata into the same shape used by
+   * thread() commands, so cross-scene text conversations can share phone UI.
+   *
+   * @param {object} scene - Scene definition with optional contact metadata.
+   * @returns {object|null} Normalized contact or null when the scene has none.
+   */
+  resolveSceneContact(scene) {
+    if (!scene?.contact) {
+      return null;
+    }
+    const name = scene.contact.name ?? scene.id ?? "Messages";
+    return {
+      id: scene.contact.id ?? scene.id ?? name,
+      name,
+      color: scene.contact.color,
+      avatar: scene.contact.avatar ?? name.slice(0, 1),
+      subtitle: scene.contact.subtitle ?? ""
+    };
+  }
+
+  /**
+   * Checks whether a transition should feel like opening a new phone message
+   * instead of pressing a VN continue button. This only applies while already
+   * inside a populated texting thread and only when the target scene also has a
+   * phone contact.
+   *
+   * @param {object} command - Transition command.
+   * @returns {object|null} Target contact when a notification should be shown.
+   */
+  getTextingTransitionNotificationContact(command) {
+    if (
+      this.reconstructing ||
+      this.state.currentSurface !== "texting" ||
+      !command.target ||
+      !this.registry[command.target] ||
+      typeof this.activeRenderer?.showThreadNotification !== "function"
+    ) {
+      return null;
+    }
+
+    const messageCount = this.state.visuals.texting?.messages?.length ?? 0;
+    if (messageCount === 0) {
+      return null;
+    }
+
+    const currentContact = this.state.visuals.texting?.contact ?? this.resolveSceneContact(this.scene);
+    const targetContact = this.resolveSceneContact(this.registry[command.target]);
+    if (!currentContact || !targetContact) {
+      return null;
+    }
+
+    const currentKey = currentContact.id ?? currentContact.name;
+    const targetKey = targetContact.id ?? targetContact.name;
+    return currentKey !== targetKey ? targetContact : null;
+  }
+
+  /**
+   * Marks an inbox thread unread and mirrors that state onto the Messages app
+   * badge.
+   *
+   * @param {object} contact - Thread contact.
+   * @param {object} [options] - Pending inbox metadata.
+   * @returns {void}
+   */
+  markTextThreadUnread(contact, options = {}) {
+    markTextThreadUnread(this.state.visuals, contact, options);
+    this.state.visuals.phone.badges.texting = true;
+  }
+
+  /**
+   * Marks an inbox thread read and clears the Messages badge once no unread
+   * threads remain.
+   *
+   * @param {string} threadId - Thread id.
+   * @returns {void}
+   */
+  markTextThreadRead(threadId) {
+    markTextThreadRead(this.state.visuals, threadId);
+    if (!hasUnreadTextThreads(this.state.visuals)) {
+      this.state.visuals.phone.badges.texting = false;
+      clearPhoneNotification(this.state.visuals.phone, "texting");
+    }
+    if (!this.reconstructing) {
+      this.save();
+      this.projectSurface("texting", { instant: true });
+      this.projectSurface("phone_home", { instant: true });
+    }
+  }
+
+  /**
+   * Opens a conversation from the Messages inbox. Pending story texts resume
+   * their authored scene/command; ordinary read threads stay in the phone app
+   * as scrollback.
+   *
+   * @param {string} threadId - Thread id to open.
+   * @returns {boolean} True when opening consumed a pending story action.
+   */
+  openTextThread(threadId) {
+    const thread = this.state.visuals.texting?.threads?.[threadId] ?? null;
+    if (!thread) {
+      return false;
+    }
+
+    const pendingSceneId = thread.pendingSceneId;
+    const pendingCommandIndex = thread.pendingCommandIndex;
+
+    if (pendingSceneId && this.registry[pendingSceneId]) {
+      this.markTextThreadRead(threadId);
+      this.blockingInput = false;
+      this.isWaitingForPlayer = false;
+      this.loadScene(pendingSceneId);
+      return true;
+    }
+
+    if (
+      Number.isFinite(pendingCommandIndex) &&
+      pendingCommandIndex === this.state.currentCommandIndex &&
+      this.state.currentSurface === "texting"
+    ) {
+      setTextingThread(this.state.visuals, thread.contact);
+      this.markTextThreadRead(threadId);
+      this.activeRenderer?.setThread?.(thread.contact);
+      this.blockingInput = false;
+      this.isWaitingForPlayer = false;
+      this.advanceCommand();
+      this.save();
+      this.runUntilBlocked();
+      return true;
+    }
+
+    this.markTextThreadRead(threadId);
+    return false;
+  }
+
+  /**
+   * Finds a short inbox preview from authored text commands.
+   *
+   * @param {object} scene - Scene to scan.
+   * @param {number} [startIndex] - Script index to begin scanning.
+   * @param {string} [contactId] - Expected incoming contact id.
+   * @returns {string} Preview text.
+   */
+  previewIncomingText(scene, startIndex = 0, contactId = null) {
+    for (const command of scene?.script?.slice(startIndex) ?? []) {
+      if (command.type === "thread" && contactId && command.id !== contactId) {
+        return "New message";
+      }
+      if (command.type === "textBlock") {
+        const incoming = (command.texts ?? []).find((message) => message.id && message.id !== "player");
+        if (incoming?.kind === "image") {
+          return "Photo";
+        }
+        if (incoming?.message) {
+          return incoming.message;
+        }
+      }
+      if (command.type === "say" && command.speaker !== "player") {
+        return (command.lines ?? [command.message ?? ""]).filter(Boolean).join(" ") || "New message";
+      }
+      if (command.type === "choice" || command.type === "transition") {
+        return "New message";
+      }
+    }
+    return "New message";
+  }
+
+  /**
+   * Opens the phone to the requested app surface.
+   *
+   * @param {string} app - App id, or "home".
+   * @returns {void}
+   */
+  openPhoneApp(app = "home", { fromHistory = false } = {}) {
+    const surfaceId = app === "home" ? "phone_home" : app;
+    if (!this.surfaceRegistry.has(surfaceId)) {
+      return;
+    }
+    const returnSurface = this.getPhoneReturnSurface() ?? this.state.currentSurface ?? "texting";
+    const topSurface = this.surfaceStack[this.surfaceStack.length - 1] ?? null;
+    const previousApp = this.state.visuals.phone.currentApp ?? "home";
+    if (!fromHistory && this.isPhoneOpen() && previousApp !== app) {
+      this.phoneAppHistory.push(previousApp);
+    }
+      this.state.visuals.phone.currentApp = app;
+    if (app !== "home") {
+      clearPhoneNotification(this.state.visuals.phone, app);
+    }
+    if (this.isPhoneOpen()) {
+      if (surfaceId === returnSurface) {
+        this.returnToStorySurface();
+      } else if (topSurface !== surfaceId) {
+        while (this.surfaceStack.length > 1 && this.isPhoneNavigationLayer(this.surfaceStack.at(-1))) {
+          this.popSurface();
+        }
+        this.setPhoneNavigationSurface(surfaceId);
+        this.pushSurface(surfaceId);
+      }
+    } else if (surfaceId !== returnSurface) {
+      this.setPhoneNavigationSurface(surfaceId);
+      this.pushSurface(surfaceId);
+    } else {
+      this.setPhoneNavigationSurface(null);
+    }
+    if (!this.reconstructing) {
+      this.updatePhoneCheckpointState();
+      this.save();
+    }
+  }
+
+  /**
+   * Moves to the previous phone app, or closes the phone when history is empty.
+   *
+   * @returns {void}
+   */
+  goBackPhoneApp() {
+    if (!this.isPhoneOpen()) {
+      return;
+    }
+    const previousApp = this.phoneAppHistory.pop();
+    if (previousApp) {
+      this.openPhoneApp(previousApp, { fromHistory: true });
+      return;
+    }
+    this.returnToStorySurface();
+  }
+
+  /**
+   * Applies a phone state command.
+   *
+   * @param {object} command - Phone command.
+   * @returns {boolean} True when handled.
+   */
+  applyPhoneCommand(command) {
+    const phone = this.state.visuals.phone;
+    switch (command.type) {
+      case "phoneButton":
+        phone.isButtonEnabled = command.enabled !== false;
+        this.updatePhoneCheckpointState();
+        this.advanceCommand();
+        return true;
+      case "phoneApps":
+        setPhoneApps(phone, command.apps);
+        this.updatePhoneCheckpointState();
+        this.advanceCommand();
+        return true;
+      case "phoneNotify":
+        addPhoneNotification(phone, command.app, command);
+        if (!this.reconstructing) {
+          this.activeRenderer?.showPhoneToast?.(phone.notifications.at(-1), {
+            onSelect: () => this.openPhoneApp(command.app)
+          });
+        }
+        this.updatePhoneCheckpointState();
+        this.advanceCommand();
+        return true;
+      case "clearPhoneNotify":
+        clearPhoneNotification(phone, command.app);
+        this.updatePhoneCheckpointState();
+        this.advanceCommand();
+        return true;
+      case "openPhone":
+        this.openPhoneApp(command.app ?? "home");
+        this.advanceCommand();
+        return true;
+      case "setWallpaper":
+        phone.wallpaperImage = command.image ?? null;
+        this.syncVisualState({ instant: this.reconstructing });
+        this.updatePhoneCheckpointState();
+        this.advanceCommand();
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  /**
+   * Applies a gallery state command.
+   *
+   * @param {object} command - Gallery command.
+   * @returns {boolean} True when handled.
+   */
+  applyGalleryCommand(command) {
+    const gallery = this.state.visuals.gallery;
+    if (!gallery) {
+      return false;
+    }
+    if (command.type === "saveGalleryImage") {
+      saveGalleryImageState(gallery, command);
+      this.projectSurface("gallery", { instant: this.reconstructing });
+      this.updatePhoneCheckpointState();
+      this.advanceCommand();
+      return true;
+    }
+    if (command.type === "removeGalleryImage") {
+      removeGalleryImageState(gallery, command.id);
+      this.projectSurface("gallery", { instant: this.reconstructing });
+      this.updatePhoneCheckpointState();
+      this.advanceCommand();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Applies a social feed state command.
+   *
+   * @param {object} command - Social command.
+   * @returns {boolean} True when handled.
+   */
+  applySocialCommand(command) {
+    const social = this.state.visuals.social;
+    if (!social) {
+      return false;
+    }
+    if (command.type === "socialPost") {
+      saveSocialPostState(social, command);
+      if (command.notify) {
+        const notification = addPhoneNotification(this.state.visuals.phone, "social", {
+          id: command.notifyId ?? `social:${command.id}`,
+          text: command.notifyText ?? "New social post"
+        });
+        if (!this.reconstructing) {
+          this.activeRenderer?.showPhoneToast?.(notification, {
+            onSelect: () => this.openPhoneApp("social")
+          });
+        }
+      }
+      this.projectSurface("social", { instant: this.reconstructing });
+      this.updatePhoneCheckpointState();
+      this.advanceCommand();
+      return true;
+    }
+    if (command.type === "socialFollow") {
+      social.follows[command.poster] = true;
+      if (command.flag) {
+        this.state.vars[command.flag] = true;
+      }
+      this.projectSurface("social", { instant: this.reconstructing });
+      this.updatePhoneCheckpointState();
+      this.advanceCommand();
+      return true;
+    }
+    if (command.type === "socialLike") {
+      social.likes[command.id] = true;
+      if (command.flag) {
+        this.state.vars[command.flag] = true;
+      }
+      this.projectSurface("social", { instant: this.reconstructing });
+      this.updatePhoneCheckpointState();
+      this.advanceCommand();
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Reports whether the floating phone button should show an unread badge.
+   *
+   * @returns {boolean} True when unread notifications exist.
+   */
+  hasUnreadPhoneNotifications() {
+    return hasUnreadPhoneNotifications(this.state.visuals.phone);
+  }
+
+  /**
+   * Sets wallpaper from player UI without advancing the script.
+   *
+   * @param {string|null} image - Image asset id.
+   * @returns {void}
+   */
+  setPhoneWallpaper(image) {
+    this.state.visuals.phone.wallpaperImage = image ?? null;
+    this.syncVisualState({ instant: true });
+    this.updatePhoneCheckpointState();
+    this.save();
+  }
+
+  /**
+   * Records a player social like without advancing the script.
+   *
+   * @param {string} id - Post id.
+   * @param {string|null} [flag] - Optional story flag.
+   * @returns {void}
+   */
+  likeSocialPost(id, flag = null) {
+    this.state.visuals.social.likes[id] = true;
+    if (flag) {
+      this.state.vars[flag] = true;
+    }
+    this.projectSurface("social", { instant: true });
+    this.updatePhoneCheckpointState();
+    this.save();
+  }
+
+  /**
+   * Records a player social follow without advancing the script.
+   *
+   * @param {string} poster - Poster id.
+   * @param {string|null} [flag] - Optional story flag.
+   * @returns {void}
+   */
+  followSocialPoster(poster, flag = null) {
+    this.state.visuals.social.follows[poster] = true;
+    if (flag) {
+      this.state.vars[flag] = true;
+    }
+    this.projectSurface("social", { instant: true });
+    this.updatePhoneCheckpointState();
+    this.save();
+  }
+
+  /**
    * After a beat finishes, automatically surfaces an immediately-following
    * choice or transition so the player never has to tap to reveal their own
    * reply options. Steps over labels/setFlags (applying flags) to find it.
@@ -1719,15 +2446,22 @@ export class SceneRunner {
       return false;
     }
 
+    let changedVars = false;
     for (let cursor = this.state.currentCommandIndex; cursor < index; cursor += 1) {
       const command = this.scene.script[cursor];
       if (command.type === "setFlag") {
         this.state.vars[command.key] = command.value;
+        changedVars = true;
       } else if (command.type === "setVar") {
         applyVarMutations(this.state.vars, { [command.key]: command.value });
+        changedVars = true;
       } else if (command.type === "roll") {
         this.state.vars[command.key] = rollInt(this.state, command.min, command.max);
+        changedVars = true;
       }
+    }
+    if (changedVars) {
+      this.syncIrlSprites({ instant: this.reconstructing });
     }
 
     this.state.currentCommandIndex = index;
@@ -1750,20 +2484,35 @@ export class SceneRunner {
     }
     if (command.var !== undefined) {
       const left = vars[command.var];
-      const right = command.value;
-      switch (command.op) {
-        case ">": return left > right;
-        case ">=": return left >= right;
-        case "<": return left < right;
-        case "<=": return left <= right;
-        case "!=": return left !== right;
-        case "==":
-        case "===":
-        default: return left === right;
+      if ("is" in command) {
+        return authorCompare(left, "==", command.is);
       }
+      if ("isNot" in command) {
+        return authorCompare(left, "!=", command.isNot);
+      }
+      if ("atLeast" in command) {
+        return authorCompare(left, ">=", command.atLeast);
+      }
+      if ("atMost" in command) {
+        return authorCompare(left, "<=", command.atMost);
+      }
+      if ("moreThan" in command) {
+        return authorCompare(left, ">", command.moreThan);
+      }
+      if ("lessThan" in command) {
+        return authorCompare(left, "<", command.lessThan);
+      }
+      if ("hasText" in command) {
+        const hasText = typeof left === "string" && left.trim().length > 0;
+        return authorCompare(hasText, "==", command.hasText);
+      }
+      if (command.op) {
+        return authorCompare(left, command.op, command.value);
+      }
+      return isOn(left);
     }
     if (command.flag !== undefined) {
-      return Boolean(vars[command.flag]);
+      return isOn(vars[command.flag]);
     }
     return false;
   }
@@ -1776,8 +2525,24 @@ export class SceneRunner {
    */
   showTransition(command) {
     this.compositor.hideNarration();
+    const notificationContact = this.getTextingTransitionNotificationContact(command);
     this.isWaitingForPlayer = true;
     this.blockingInput = true;
+    if (notificationContact) {
+      this.markTextThreadUnread(notificationContact, {
+        preview: this.previewIncomingText(this.registry[command.target], 0, notificationContact.id),
+        pendingSceneId: command.target
+      });
+      this.activeRenderer.showThreadNotification(notificationContact, {
+        onSelect: () => {
+          this.markTextThreadRead(notificationContact.id ?? notificationContact.name);
+          this.blockingInput = false;
+          this.loadScene(command.target);
+        }
+      });
+      return;
+    }
+
     this.activeRenderer.showTransition(command, {
       onSelect: () => {
         this.blockingInput = false;
@@ -1807,7 +2572,14 @@ export class SceneRunner {
     }
 
     // Tear down all stacked surfaces for a clean scene transition
+    const phoneCarry = structuredClone({
+      phone: this.state.visuals.phone,
+      texting: this.state.visuals.texting,
+      gallery: this.state.visuals.gallery,
+      social: this.state.visuals.social
+    });
     this.teardownMountedSurfaces();
+    this.setPhoneNavigationSurface(null);
     this.audio.stopTransient?.();
 
     this.scene = next;
@@ -1818,6 +2590,13 @@ export class SceneRunner {
     this.state.surfaceStack = [];
     this.state.currentSurface = "texting";
     this.resetVisualState();
+    this.state.visuals.phone = phoneCarry.phone ?? this.state.visuals.phone;
+    this.state.visuals.texting = phoneCarry.texting ?? this.state.visuals.texting;
+    this.state.visuals.texting.contact = null;
+    this.state.visuals.texting.messages = [];
+    this.state.visuals.texting.currentThreadId = null;
+    this.state.visuals.gallery = phoneCarry.gallery ?? this.state.visuals.gallery;
+    this.state.visuals.social = phoneCarry.social ?? this.state.visuals.social;
     this.isWaitingForPlayer = false;
     this.isFinished = false;
     this.blockingInput = false;
@@ -1836,9 +2615,9 @@ export class SceneRunner {
     this.beginReadableBeat();
     this.compositor.hideNarration();
     this.isWaitingForPlayer = true;
-    appendTextMessages(this.state.visuals, command.texts ?? []);
+    const renderedTexts = appendTextMessages(this.state.visuals, command.texts ?? []);
     this.recordMessageHistory(command.texts ?? [], "texting");
-    this.activeRenderer.showTextBlock(command, {
+    this.activeRenderer.showTextBlock({ ...command, texts: renderedTexts }, {
       characters: this.characters,
       onComplete: () => {
         this.state.currentCommandIndex += 1;
@@ -1942,8 +2721,6 @@ export class SceneRunner {
    * @returns {void}
    */
   showChoice(command) {
-    this.compositor.hideNarration();
-
     // Hide options whose showIf condition isn't met right now.
     const visible = (command.options ?? []).filter(
       (option) => option.showIf == null || evalShowIf(option.showIf, this.state.vars)
@@ -2024,6 +2801,14 @@ export class SceneRunner {
         continue;
       }
 
+      if (
+        this.applyPhoneCommand(command) ||
+        this.applyGalleryCommand(command) ||
+        this.applySocialCommand(command)
+      ) {
+        continue;
+      }
+
       switch (command.type) {
         case "surface":
           this.setSurface(command.id);
@@ -2059,8 +2844,10 @@ export class SceneRunner {
           this.state.currentCommandIndex += 1;
           break;
         case "textBlock":
-          this.activeRenderer.renderTextBlockInstant(command, { characters: this.characters });
-          appendTextMessages(this.state.visuals, command.texts ?? []);
+          {
+            const renderedTexts = appendTextMessages(this.state.visuals, command.texts ?? []);
+            this.activeRenderer.renderTextBlockInstant({ ...command, texts: renderedTexts }, { characters: this.characters });
+          }
           this.state.currentCommandIndex += 1;
           break;
         case "say":
@@ -2097,6 +2884,7 @@ export class SceneRunner {
           this.state.currentCommandIndex += 1;
           break;
         case "sound":
+        case "stopSound":
         case "voice":
           this.state.currentCommandIndex += 1;
           break;

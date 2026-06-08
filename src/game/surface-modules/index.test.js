@@ -4,8 +4,12 @@ import { SURFACE_MODULES, SURFACE_RENDERER_CONSTRUCTORS } from "./index.js";
 
 describe("game surface module discovery", () => {
   it("ignores copyable example modules", () => {
-    expect(SURFACE_MODULES.map((surface) => surface.id)).toEqual(expect.arrayContaining(["irl", "texting", "streaming"]));
-    expect(SURFACE_MODULES.map((surface) => surface.id)).not.toContain("gallery");
+    expect(SURFACE_MODULES.map((surface) => surface.id)).toEqual(expect.arrayContaining([
+      "irl",
+      "texting",
+      "streaming",
+      "gallery"
+    ]));
     expect(SURFACE_RENDERER_CONSTRUCTORS.gallery).toBeUndefined();
   });
 

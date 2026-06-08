@@ -1,24 +1,42 @@
-import { scene, stage, say, transition } from "../vn.js";
+// =============================================================================
+// Example scene pack
+//
+// Copy this file to a new .js file in this folder when one file should carry
+// several related scenes, such as a chapter, route, or optional content pack.
+// Files ending in .example.js are ignored by auto-discovery.
+// =============================================================================
+
+import {
+  mark,
+  scene,
+  say,
+  stage,
+  transition
+} from "../vn.js";
 
 export const chapterPackExample = [
   scene({
     id: "scene_example_pack_intro",
     mode: "test",
-    cast: ["me", "alex"],
+    cast: ["me"],
     script: [
       stage("irl"),
-      say("alex", "This is the first scene in a pack."),
-      transition("Next", "scene_example_pack_followup")
+      say("This is the first scene in a pack."),
+      transition("Continue", "scene_example_pack_followup")
     ]
   }),
+
   scene({
     id: "scene_example_pack_followup",
     mode: "test",
-    cast: ["me", "alex"],
+    cast: ["me"],
     script: [
-      stage("texting"),
-      say("alex", "This is the follow-up scene.")
+      stage("irl"),
+      mark("start"),
+      say("This is the second scene in the same file."),
+      transition("Done", null)
     ]
   })
 ];
 
+export default chapterPackExample;

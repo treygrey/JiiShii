@@ -29,6 +29,13 @@ import {
   setStreamWindowState,
   setTextingThread
 } from "./visual-state.js";
+import {
+  createGalleryState,
+  createSocialState,
+  normalizeGalleryState,
+  normalizePhoneState,
+  normalizeSocialState
+} from "./phone-state.js";
 
 export const SHARED_RENDERER_COMMANDS = ["choice", "transition"];
 
@@ -46,6 +53,7 @@ const SURFACE_ID_PATTERN = /^[a-z][a-z0-9_-]*$/;
  * @param {string} [moduleDefinition.renderer.surface] - Renderer surface id.
  * @param {string[]} moduleDefinition.renderer.commands - Renderer-owned commands.
  * @param {string[]} [moduleDefinition.renderer.projections] - State projection methods.
+ * @param {boolean|object} [moduleDefinition.phoneApp] - Optional phone launcher metadata.
  * @param {Record<string, object>} [moduleDefinition.commands] - Surface command metadata.
  * @param {object} [moduleDefinition.state] - Surface state lifecycle hooks.
  * @param {Record<string, Function|object>} [moduleDefinition.handlers] - Command handlers.
@@ -84,6 +92,7 @@ export function defineSurfaceModule(moduleDefinition) {
   return {
     id,
     baseline: moduleDefinition.baseline === true,
+    phoneApp: normalizePhoneAppMetadata(id, moduleDefinition.phoneApp),
     renderer: {
       surface: id,
       commands: rendererCommands,
@@ -92,6 +101,32 @@ export function defineSurfaceModule(moduleDefinition) {
     commands: normalizeSurfaceCommands(id, moduleDefinition.commands ?? {}),
     state: normalizeStateLifecycle(id, moduleDefinition.state),
     handlers: normalizeCommandHandlers(id, moduleDefinition.handlers ?? {})
+  };
+}
+
+/**
+ * Normalizes optional phone app metadata for launcher-ready surfaces.
+ *
+ * @param {string} surfaceId - Surface id.
+ * @param {boolean|object|null} value - Phone app declaration.
+ * @returns {object|null} Normalized metadata.
+ */
+function normalizePhoneAppMetadata(surfaceId, value) {
+  if (!value) {
+    return null;
+  }
+  if (value === true) {
+    return {
+      label: surfaceId,
+      icon: null
+    };
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`Surface module "${surfaceId}": phoneApp must be true or an object.`);
+  }
+  return {
+    label: typeof value.label === "string" && value.label.trim() ? value.label : surfaceId,
+    icon: typeof value.icon === "string" && value.icon.trim() ? value.icon : null
   };
 }
 
@@ -244,6 +279,7 @@ export const IRL_SURFACE = defineSurfaceModule({
     project: ({ renderer, state, context }) => {
       renderer?.renderSpriteState?.(state, {
         characters: context.characters,
+        vars: context.vars ?? {},
         instant: context.instant
       });
     }
@@ -391,6 +427,10 @@ export const IRL_SURFACE = defineSurfaceModule({
 
 export const TEXTING_SURFACE = defineSurfaceModule({
   id: "texting",
+  phoneApp: {
+    label: "Messages",
+    icon: "M"
+  },
   renderer: {
     surface: "texting",
     commands: ["textBlock", "thread", ...SHARED_RENDERER_COMMANDS],
@@ -416,9 +456,9 @@ export const TEXTING_SURFACE = defineSurfaceModule({
         runner.beginReadableBeat();
         runner.compositor.hideNarration();
         runner.isWaitingForPlayer = true;
-        appendTextMessages(runner.state.visuals, command.texts ?? []);
+        const renderedTexts = appendTextMessages(runner.state.visuals, command.texts ?? []);
         runner.recordMessageHistory(command.texts ?? [], "texting");
-        renderer.showTextBlock(command, {
+        renderer.showTextBlock({ ...command, texts: renderedTexts }, {
           characters: runner.characters,
           onComplete: () => {
             runner.advanceCommand();
@@ -430,17 +470,54 @@ export const TEXTING_SURFACE = defineSurfaceModule({
         });
       },
       instant: ({ runner, renderer, command }) => {
-        renderer.renderTextBlockInstant(command, { characters: runner.characters });
-        appendTextMessages(runner.state.visuals, command.texts ?? []);
+        const renderedTexts = appendTextMessages(runner.state.visuals, command.texts ?? []);
+        renderer.renderTextBlockInstant({ ...command, texts: renderedTexts }, { characters: runner.characters });
         runner.advanceCommand();
       }
     },
     thread: {
       run: ({ runner, renderer, command }) => {
         const contact = runner.resolveThreadContact(command);
-        setTextingThread(runner.state.visuals, contact);
-        renderer.setThread?.(contact);
-        runner.advanceCommand();
+        const currentContact = runner.state.visuals.texting?.contact;
+        const shouldNotify = Boolean(
+          currentContact?.id &&
+          currentContact.id !== contact.id &&
+          (runner.state.visuals.texting?.messages?.length ?? 0) > 0 &&
+          !runner.reconstructing
+        );
+
+        if (!shouldNotify) {
+          setTextingThread(runner.state.visuals, contact);
+          renderer.setThread?.(contact);
+          runner.advanceCommand();
+          return;
+        }
+
+        const openThread = () => {
+          setTextingThread(runner.state.visuals, contact);
+          runner.markTextThreadRead?.(contact.id ?? contact.name);
+          renderer.setThread?.(contact);
+          runner.blockingInput = false;
+          runner.isWaitingForPlayer = false;
+          runner.advanceCommand();
+          runner.save();
+          runner.runUntilBlocked();
+        };
+
+        if (typeof renderer.showThreadNotification !== "function") {
+          setTextingThread(runner.state.visuals, contact);
+          renderer.setThread?.(contact);
+          runner.advanceCommand();
+          return;
+        }
+
+        runner.isWaitingForPlayer = true;
+        runner.blockingInput = true;
+        runner.markTextThreadUnread?.(contact, {
+          preview: runner.previewIncomingText?.(runner.scene, runner.state.currentCommandIndex + 1, contact.id),
+          pendingCommandIndex: runner.state.currentCommandIndex
+        });
+        renderer.showThreadNotification(contact, { onSelect: openThread });
       },
       instant: ({ runner, renderer, command }) => {
         const contact = runner.resolveThreadContact(command);
@@ -633,7 +710,91 @@ export const STREAMING_SURFACE = defineSurfaceModule({
   }
 });
 
-export const BUILTIN_SURFACE_MODULES = [IRL_SURFACE, TEXTING_SURFACE, STREAMING_SURFACE];
+export const PHONE_HOME_SURFACE = defineSurfaceModule({
+  id: "phone_home",
+  renderer: {
+    surface: "phone_home",
+    commands: [...SHARED_RENDERER_COMMANDS],
+    projections: ["renderPhoneHomeState"]
+  },
+  commands: {},
+  state: {
+    create: () => null,
+    normalize: () => null,
+    clone: () => null,
+    project: ({ renderer, rootState, context }) => {
+      renderer?.renderPhoneHomeState?.({
+        phone: normalizePhoneState(rootState.visuals?.phone),
+        gallery: normalizeGalleryState(rootState.visuals?.gallery),
+        social: normalizeSocialState(rootState.visuals?.social),
+        phoneApps: context.phoneApps ?? {}
+      }, {
+        characters: context.characters,
+        instant: context.instant
+      });
+    }
+  }
+});
+
+export const GALLERY_SURFACE = defineSurfaceModule({
+  id: "gallery",
+  phoneApp: {
+    label: "Gallery",
+    icon: "G"
+  },
+  renderer: {
+    surface: "gallery",
+    commands: [...SHARED_RENDERER_COMMANDS],
+    projections: ["renderGalleryState"]
+  },
+  commands: {},
+  state: {
+    create: createGalleryState,
+    normalize: normalizeGalleryState,
+    clone: (value) => structuredClone(normalizeGalleryState(value)),
+    project: ({ renderer, state, rootState, context }) => {
+      renderer?.renderGalleryState?.(normalizeGalleryState(state), {
+        phone: normalizePhoneState(rootState.visuals?.phone),
+        instant: context.instant
+      });
+    }
+  }
+});
+
+export const SOCIAL_SURFACE = defineSurfaceModule({
+  id: "social",
+  phoneApp: {
+    label: "Social",
+    icon: "S"
+  },
+  renderer: {
+    surface: "social",
+    commands: [...SHARED_RENDERER_COMMANDS],
+    projections: ["renderSocialState"]
+  },
+  commands: {},
+  state: {
+    create: createSocialState,
+    normalize: normalizeSocialState,
+    clone: (value) => structuredClone(normalizeSocialState(value)),
+    project: ({ renderer, state, rootState, context }) => {
+      renderer?.renderSocialState?.(normalizeSocialState(state), {
+        phone: normalizePhoneState(rootState.visuals?.phone),
+        characters: context.characters,
+        instant: context.instant
+      });
+    }
+  }
+});
+
+export const BUILTIN_SURFACE_MODULES = [
+  IRL_SURFACE,
+  TEXTING_SURFACE,
+  STREAMING_SURFACE,
+  PHONE_HOME_SURFACE,
+  GALLERY_SURFACE,
+  SOCIAL_SURFACE
+];
 
 /**
  * Creates a lookup map from surface modules.
@@ -745,11 +906,22 @@ export function cloneSurfaceState(state = {}, registry = createSurfaceRegistry()
  * @param {{ sprites?: object, visuals?: object }} options.state - Root state slices.
  * @param {Record<string, object>} options.renderers - Renderers by surface id.
  * @param {Map<string, object>} options.registry - Surface module registry.
+ * @param {Set<string>|Array<string>|null} [options.surfaceIds] - Optional surface ids to project.
  * @param {object} [options.context] - Projection context.
  * @returns {void}
  */
-export function projectSurfaceState({ state, renderers, registry = createSurfaceRegistry(), context = {} }) {
+export function projectSurfaceState({
+  state,
+  renderers,
+  registry = createSurfaceRegistry(),
+  surfaceIds = null,
+  context = {}
+}) {
+  const allowedSurfaceIds = surfaceIds ? new Set(surfaceIds) : null;
   for (const surface of registry.values()) {
+    if (allowedSurfaceIds && !allowedSurfaceIds.has(surface.id)) {
+      continue;
+    }
     const slice = readSurfaceStateSlice(state, surface.id);
     surface.state?.project?.({
       renderer: renderers?.[surface.id],

@@ -82,4 +82,3 @@ export function resolveImageAmbiguity(id) {
 export function listImageIds() {
   return Object.keys(IMAGE_ASSETS);
 }
-

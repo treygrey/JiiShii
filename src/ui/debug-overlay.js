@@ -60,7 +60,7 @@ function describe(snap) {
 
   if (snap.sprites.length) {
     for (const sprite of snap.sprites) {
-      lines.push(`  ${sprite.id}: ${sprite.outfit ?? "—"} / ${sprite.expression ?? "—"} @ ${sprite.side}${sprite.flip ? " ⇆" : ""}`);
+      lines.push(`  ${sprite.id}: ${sprite.body ?? "default"} / ${sprite.outfit ?? "—"} / ${sprite.expression ?? "—"} @ ${sprite.side}${sprite.flip ? " ⇆" : ""}`);
     }
   } else {
     lines.push("  (none)");

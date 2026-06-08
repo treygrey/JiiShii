@@ -41,7 +41,28 @@ const PRESETS = {
       texting: 2
     }
   },
-  // Streaming-only (laptop on IRL background)
+  phone_home: {
+    zOrder: {
+      background: 0,
+      scrim: 1,
+      phone_home: 2
+    }
+  },
+  gallery: {
+    zOrder: {
+      background: 0,
+      scrim: 1,
+      gallery: 2
+    }
+  },
+  social: {
+    zOrder: {
+      background: 0,
+      scrim: 1,
+      social: 2
+    }
+  },
+  // Streaming-only (stream site panel over IRL background)
   streaming: {
     zOrder: {
       background: 0,
@@ -61,6 +82,26 @@ const PRESETS = {
     }
   }
 };
+
+/**
+ * Builds a generated preset for stacked surfaces. The story/base surfaces stay
+ * visible under the scrim, while the top surface receives focus.
+ *
+ * @param {string[]} surfaceStack - Active surface ids from back to front.
+ * @returns {LayerPreset} Generated stacked preset.
+ */
+function createStackedPreset(surfaceStack = []) {
+  const zOrder = { background: 0 };
+  surfaceStack.forEach((surfaceId, index) => {
+    zOrder[surfaceId] = index + 1;
+  });
+  const topSurface = surfaceStack[surfaceStack.length - 1];
+  if (topSurface) {
+    zOrder.scrim = surfaceStack.length;
+    zOrder[topSurface] = surfaceStack.length + 1;
+  }
+  return { zOrder };
+}
 
 /**
  * Orchestrates a stack of named DOM layers with z-index ordering. Surfaces
@@ -248,6 +289,11 @@ export class LayerCompositor {
       return "irl";
     }
 
+    if (surfaceStack.length > 1) {
+      PRESETS.__stacked = createStackedPreset(surfaceStack);
+      return "__stacked";
+    }
+
     const top = surfaceStack[surfaceStack.length - 1];
     const hasStream = surfaceStack.includes("streaming");
     const hasTexting = surfaceStack.includes("texting");
@@ -260,6 +306,9 @@ export class LayerCompositor {
     // Single surface
     if (top === "streaming") return "streaming";
     if (top === "texting") return "texting";
+    if (top === "phone_home") return "phone_home";
+    if (top === "gallery") return "gallery";
+    if (top === "social") return "social";
     if (top === "irl") return "irl";
 
     // Fallback — treat unknown surfaces as if they're the only one

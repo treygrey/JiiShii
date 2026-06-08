@@ -27,6 +27,7 @@ export function createInitialState() {
     currentSurface: "texting",
     /** @type {string[]} */
     surfaceStack: [],
+    phoneNavigationSurface: null,
     choicesMade: [],
     // Unified variable store. Flags are just boolean vars; stats are just
     // numeric vars. One namespace = one source of truth.
@@ -59,6 +60,9 @@ export function migrateState(saved) {
   }
   if (!Array.isArray(saved.surfaceStack)) {
     saved.surfaceStack = [];
+  }
+  if (typeof saved.phoneNavigationSurface !== "string") {
+    saved.phoneNavigationSurface = null;
   }
   saved.audio = normalizeAudioState(saved.audio);
   saved.history = normalizeHistoryState(saved.history);

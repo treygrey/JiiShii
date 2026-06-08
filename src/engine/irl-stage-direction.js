@@ -10,17 +10,27 @@ export const IRL_POSITION_PRESETS = {
   nearRight: { x: "64%", scale: 1.08, z: 34 }
 };
 
+const DEFAULT_REPLACEMENT = "cut";
+const VALID_REPLACEMENTS = new Set(["cut", "dip", "flip"]);
+
 export const IRL_TRANSITION_PRESETS = {
-  cut: { duration: 0, easing: "linear" },
-  dissolve: { duration: 260, easing: "ease" },
-  fade: { duration: 320, easing: "ease" },
-  move: { duration: 400, easing: "ease" },
-  ease: { duration: 500, easing: "cubic-bezier(0.22, 1, 0.36, 1)" },
-  moveInLeft: { duration: 420, easing: "ease", enterFrom: "offscreenLeft" },
-  moveInRight: { duration: 420, easing: "ease", enterFrom: "offscreenRight" },
-  moveOutLeft: { duration: 320, easing: "ease", exitTo: "offscreenLeft" },
-  moveOutRight: { duration: 320, easing: "ease", exitTo: "offscreenRight" }
+  cut: { duration: 0, easing: "linear", replacement: "cut" },
+  dissolve: { duration: 260, easing: "ease", replacement: "cut" },
+  fade: { duration: 320, easing: "ease", replacement: "cut" },
+  move: { duration: 400, easing: "ease", replacement: "cut" },
+  ease: { duration: 500, easing: "cubic-bezier(0.22, 1, 0.36, 1)", replacement: "cut" },
+  moveInLeft: { duration: 420, easing: "ease", enterFrom: "offscreenLeft", replacement: "cut" },
+  moveInRight: { duration: 420, easing: "ease", enterFrom: "offscreenRight", replacement: "cut" },
+  moveOutLeft: { duration: 320, easing: "ease", exitTo: "offscreenLeft", replacement: "cut" },
+  moveOutRight: { duration: 320, easing: "ease", exitTo: "offscreenRight", replacement: "cut" },
+  replaceCut: { duration: 0, easing: "linear", replacement: "cut" },
+  replaceDip: { duration: 180, easing: "ease", replacement: "dip" },
+  replaceFlip: { duration: 320, easing: "cubic-bezier(0.22, 1, 0.36, 1)", replacement: "flip" }
 };
+
+const irlTransitionRegistry = new Map(
+  Object.entries(IRL_TRANSITION_PRESETS).map(([name, preset]) => [name, normalizeTransitionPreset(preset)])
+);
 
 /**
  * Returns a valid duration override or null when the value should be ignored.
@@ -47,6 +57,42 @@ function normalizeEasingOverride(easing) {
 }
 
 /**
+ * Normalizes a sprite transition descriptor before registration or resolution.
+ *
+ * @param {object} preset - Transition descriptor.
+ * @returns {object} Normalized transition descriptor.
+ */
+function normalizeTransitionPreset(preset = {}) {
+  return {
+    ...preset,
+    duration: normalizeDurationOverride(preset.duration) ?? IRL_TRANSITION_PRESETS.dissolve.duration,
+    easing: normalizeEasingOverride(preset.easing) ?? IRL_TRANSITION_PRESETS.dissolve.easing,
+    replacement: VALID_REPLACEMENTS.has(preset.replacement) ? preset.replacement : DEFAULT_REPLACEMENT
+  };
+}
+
+/**
+ * Registers or replaces an IRL sprite transition preset.
+ *
+ * Keep descriptors declarative so skip, load replay, and instant reconstruction
+ * can stay deterministic. Supported replacement modes are "cut", "dip", and
+ * "flip"; movement can use enterFrom/exitTo placement ids.
+ *
+ * @param {string} name - Transition preset id used by show/move/hide commands.
+ * @param {object} preset - Transition descriptor.
+ * @returns {void}
+ */
+export function registerIrlSpriteTransition(name, preset) {
+  if (typeof name !== "string" || name.trim().length === 0) {
+    throw new Error("IRL sprite transition: name must be a non-empty string.");
+  }
+  if (!preset || typeof preset !== "object" || Array.isArray(preset)) {
+    throw new Error(`IRL sprite transition "${name}": preset must be an object.`);
+  }
+  irlTransitionRegistry.set(name, normalizeTransitionPreset(preset));
+}
+
+/**
  * Lists known IRL position preset names.
  *
  * @returns {string[]} Position preset ids.
@@ -61,7 +107,7 @@ export function listIrlPositionPresets() {
  * @returns {string[]} Transition preset ids.
  */
 export function listIrlTransitionPresets() {
-  return Object.keys(IRL_TRANSITION_PRESETS);
+  return [...irlTransitionRegistry.keys()];
 }
 
 /**
@@ -81,7 +127,7 @@ export function hasIrlPositionPreset(value) {
  * @returns {boolean} True when known.
  */
 export function hasIrlTransitionPreset(value) {
-  return value == null || Object.hasOwn(IRL_TRANSITION_PRESETS, value);
+  return value == null || irlTransitionRegistry.has(value);
 }
 
 /**
@@ -112,10 +158,11 @@ export function resolveIrlPlacement(sprite = {}) {
  * @returns {object} Transition descriptor.
  */
 export function resolveIrlTransition(transition, options = {}) {
-  const preset = IRL_TRANSITION_PRESETS[transition] ?? IRL_TRANSITION_PRESETS.dissolve;
+  const preset = irlTransitionRegistry.get(transition) ?? irlTransitionRegistry.get("dissolve");
   return {
     ...preset,
     duration: normalizeDurationOverride(options.duration) ?? preset.duration,
-    easing: normalizeEasingOverride(options.easing) ?? preset.easing
+    easing: normalizeEasingOverride(options.easing) ?? preset.easing,
+    replacement: VALID_REPLACEMENTS.has(options.replacement) ? options.replacement : preset.replacement
   };
 }

@@ -4,6 +4,9 @@ import {
   appendTextMessages,
   cloneVisualState,
   createVisualState,
+  hasUnreadTextThreads,
+  markTextThreadRead,
+  markTextThreadUnread,
   normalizeVisualState,
   setBackgroundState,
   setStreamLayoutState,
@@ -25,16 +28,72 @@ describe("visual state helpers", () => {
     });
   });
 
-  it("tracks texting thread and messages", () => {
+  it("tracks texting threads and preserves scrollback per contact", () => {
     const visuals = createVisualState();
 
     setTextingThread(visuals, { id: "alex", name: "Alex" });
     appendTextMessages(visuals, [{ id: "alex", message: "hi" }]);
     setTextingThread(visuals, { id: "riley", name: "Riley" });
+    appendTextMessages(visuals, [{ id: "riley", message: "hey" }]);
+    setTextingThread(visuals, { id: "alex", name: "Alex" });
 
-    expect(visuals.texting).toEqual({
-      contact: { id: "riley", name: "Riley" },
-      messages: []
+    expect(visuals.texting).toMatchObject({
+      contact: { id: "alex", name: "Alex" },
+      messages: [{ id: "alex", message: "hi" }],
+      currentThreadId: "alex",
+      threads: {
+        alex: {
+          id: "alex",
+          contact: { id: "alex", name: "Alex" },
+          messages: [{ id: "alex", message: "hi" }]
+        },
+        riley: {
+          id: "riley",
+          contact: { id: "riley", name: "Riley" },
+          messages: [{ id: "riley", message: "hey" }]
+        }
+      }
+    });
+  });
+
+  it("tracks unread texting threads", () => {
+    const visuals = createVisualState();
+
+    markTextThreadUnread(visuals, { id: "alex", name: "Alex" }, {
+      preview: "Are you there?",
+      pendingSceneId: "alex_scene"
+    });
+
+    expect(hasUnreadTextThreads(visuals)).toBe(true);
+    expect(visuals.texting.threads.alex).toMatchObject({
+      contact: { id: "alex", name: "Alex" },
+      preview: "Are you there?",
+      pendingSceneId: "alex_scene",
+      unread: true
+    });
+
+    markTextThreadRead(visuals, "alex");
+
+    expect(hasUnreadTextThreads(visuals)).toBe(false);
+    expect(visuals.texting.threads.alex.pendingSceneId).toBeNull();
+  });
+
+  it("normalizes legacy texting scrollback into a thread", () => {
+    const visuals = normalizeVisualState({
+      texting: {
+        contact: { id: "riley", name: "Riley" },
+        messages: [{ id: "riley", message: "old save" }]
+      }
+    });
+
+    expect(visuals.texting).toMatchObject({
+      currentThreadId: "riley",
+      messages: [{ id: "riley", message: "old save" }],
+      threads: {
+        riley: {
+          messages: [{ id: "riley", message: "old save" }]
+        }
+      }
     });
   });
 

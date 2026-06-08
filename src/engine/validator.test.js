@@ -11,6 +11,7 @@ import {
   clearCg,
   clearStage,
   close,
+  condition,
   expression,
   flash,
   goto,
@@ -31,6 +32,7 @@ import {
   sound,
   stage,
   stopAmbience,
+  stopSound,
   shake,
   streamImage,
   streamChat,
@@ -39,6 +41,7 @@ import {
   streamWindow,
   textImage,
   photo,
+  set,
   thread,
   transition,
   voice
@@ -73,6 +76,9 @@ const TEST_OUTFITS = {
 const TEST_EXPRESSIONS = {
   alex: ["neutral", "happy", "smile"]
 };
+const TEST_BODIES = {
+  alex: ["default", "guarded"]
+};
 const TEST_GLOBAL_CHARACTERS = {
   alex: { name: "Alex" }
 };
@@ -98,6 +104,8 @@ function validateScenes(registry, options = {}) {
     ),
     listExpressions: (character) => TEST_EXPRESSIONS[character] ?? [],
     listOutfits: (character) => TEST_OUTFITS[character] ?? [],
+    listBodies: (character) => TEST_BODIES[character] ?? [],
+    listMissingRequiredSpriteLayers: () => [],
     ...options
   });
 }
@@ -130,8 +138,8 @@ function expectMessage(messages, text) {
  * @param {string} id - Image id.
  * @returns {object} Gallery image command.
  */
-function galleryImage(id) {
-  return { type: "galleryImage", id };
+function albumImage(id) {
+  return { type: "albumImage", id };
 }
 
 /**
@@ -139,15 +147,15 @@ function galleryImage(id) {
  *
  * @returns {object} Gallery surface module.
  */
-function gallerySurfaceModule() {
+function albumSurfaceModule() {
   return defineSurfaceModule({
-    id: "gallery",
+    id: "album",
     renderer: {
-      commands: ["galleryImage", "choice", "transition"],
-      projections: ["renderGalleryState"]
+      commands: ["albumImage", "choice", "transition"],
+      projections: ["renderAlbumState"]
     },
     commands: {
-      galleryImage: { blocks: false }
+      albumImage: { blocks: false }
     }
   });
 }
@@ -273,13 +281,13 @@ describe("validateScenes", () => {
       cast: ["me"],
       script: [
         stage("irl"),
-        galleryImage("demo_image")
+        albumImage("demo_image")
       ]
     })), {
-      surfaceModules: [...BUILTIN_SURFACE_MODULES, gallerySurfaceModule()]
+      surfaceModules: [...BUILTIN_SURFACE_MODULES, albumSurfaceModule()]
     });
 
-    expectMessage(result.errors, '"galleryImage" needs the gallery stage');
+    expectMessage(result.errors, '"albumImage" needs the album stage');
   });
 
   it("reports unknown command types before runtime", () => {
@@ -297,28 +305,28 @@ describe("validateScenes", () => {
         id: "registered_custom_command_scene",
         cast: ["me"],
         script: [
-          stage("gallery"),
-          galleryImage("demo_image")
+          stage("album"),
+          albumImage("demo_image")
         ]
       })
     ), {
-      surfaceModules: [...BUILTIN_SURFACE_MODULES, gallerySurfaceModule()]
+      surfaceModules: [...BUILTIN_SURFACE_MODULES, albumSurfaceModule()]
     });
 
     expectMessage(result.errors, 'unknown command "shwoCharacter"');
     expectMessage(result.errors, 'Did you mean "showCharacter"');
     expectMessage(result.errors, 'unknown command "(missing type)"');
-    expect(result.errors.some((message) => message.includes("galleryImage"))).toBe(false);
+    expect(result.errors.some((message) => message.includes("albumImage"))).toBe(false);
   });
 
   it("validates registered and unknown surface ids", () => {
-    const customSurface = gallerySurfaceModule();
+    const customSurface = albumSurfaceModule();
     const valid = validateScenes(registryOf(scene({
-      id: "custom_gallery_valid_surface_scene",
+      id: "custom_album_valid_surface_scene",
       cast: ["me"],
       script: [
-        stage("gallery"),
-        galleryImage("demo_image")
+        stage("album"),
+        albumImage("demo_image")
       ]
     })), {
       surfaceModules: [...BUILTIN_SURFACE_MODULES, customSurface]
@@ -443,6 +451,45 @@ describe("validateScenes", () => {
     expectMessage(result.errors, 'mark "target_scene" has the same name as a scene');
   });
 
+  it("validates condition branches and author-facing condition shape", () => {
+    const valid = validateScenes(registryOf(scene({
+      id: "valid_condition_scene",
+      cast: ["me"],
+      script: [
+        stage("texting"),
+        set("trust", 3),
+        condition({ var: "trust", atLeast: 3, then: "close", else: "guarded" }),
+        mark("close"),
+        say("close"),
+        mark("guarded"),
+        say("guarded")
+      ]
+    })));
+
+    expect(valid.errors).toEqual([]);
+    expect(valid.warnings).toEqual([]);
+
+    const invalid = validateScenes(registryOf(scene({
+      id: "invalid_condition_scene",
+      cast: ["me"],
+      script: [
+        stage("texting"),
+        condition({ then: "missing_then", else: "" }),
+        condition({ flag: "never_set", then: "ok", else: "missing_else" }),
+        condition({ var: "trust", op: "roughly", value: 2, then: "ok", else: "ok" }),
+        mark("ok")
+      ]
+    })));
+
+    expectMessage(invalid.errors, 'condition() then target "missing_then" is not a scene or mark');
+    expectMessage(invalid.errors, "condition() needs a else target");
+    expectMessage(invalid.errors, 'condition() else target "missing_else" is not a scene or mark');
+    expectMessage(invalid.errors, 'condition op "roughly" is not supported');
+    expectMessage(invalid.errors, "condition() needs a flag, var, or if predicate");
+    expectMessage(invalid.warnings, 'condition checks flag "never_set"');
+    expectMessage(invalid.warnings, 'condition checks variable "trust"');
+  });
+
   it("reports malformed command payloads", () => {
     const result = validateScenes(registryOf(scene({
       id: "malformed_payload_scene",
@@ -502,10 +549,11 @@ describe("validateScenes", () => {
         { type: "shake", duration: -50, intensity: -2 },
         { type: "background", id: "demo_hall_day", duration: Number.NaN },
         { type: "music", id: "missing_theme", volume: 1.2, fadeIn: -10 },
-        { type: "sound", id: "missing_bang", volume: -0.1, rate: 0 },
-        { type: "voice", id: "missing_voice", rate: "quick" },
+        { type: "sound", id: "missing_bang", volume: -0.1, rate: 0, start: 1, end: 0, as: "" },
+        { type: "voice", id: "missing_voice", rate: "quick", duration: "brief", loop: "yes", start: -1 },
         { type: "stopMusic", fadeOut: -100 },
         { type: "stopAmbience", fadeOut: "slow" },
+        stopSound("", { fadeOut: -1 }),
         { type: "roll", key: "die", min: 6, max: 1 },
         { type: "roll", key: "fractional", min: 1.5, max: 6 },
         { type: "choice", id: "", options: [{ text: "A", goto: "same" }, { text: "B", goto: "same" }] },
@@ -522,9 +570,16 @@ describe("validateScenes", () => {
     expectMessage(result.errors, "music() fadeIn must be at least 0");
     expectMessage(result.errors, "sound() volume must be at least 0");
     expectMessage(result.errors, "sound() rate must be at least 0.01");
+    expectMessage(result.errors, "sound() end must be greater than start");
+    expectMessage(result.errors, "sound() as must be a non-empty sound handle");
     expectMessage(result.errors, "voice() rate must be a finite number");
+    expectMessage(result.errors, "voice() duration must be a finite number");
+    expectMessage(result.errors, "voice() start must be at least 0");
+    expectMessage(result.errors, "voice() loop must be true or false");
     expectMessage(result.errors, "stopMusic() fadeOut must be at least 0");
     expectMessage(result.errors, "stopAmbience() fadeOut must be a finite number");
+    expectMessage(result.errors, "stopSound() needs a sound handle");
+    expectMessage(result.errors, "stopSound() fadeOut must be at least 0");
     expectMessage(result.errors, 'roll("die") min must be less than or equal to max');
     expectMessage(result.errors, "roll() min must be an integer");
     expectMessage(result.errors, "choice() id must be a non-empty string");
@@ -575,6 +630,11 @@ describe("validateScenes", () => {
         script: [stage("irl"), show("alex", { outfit: "casual", expression: "not_a_face" })]
       }),
       scene({
+        id: "bad_body_scene",
+        cast: ["me", "alex"],
+        script: [stage("irl"), show("alex", { outfit: "casual", expression: "neutral", body: "twisted" })]
+      }),
+      scene({
         id: "bodyless_sprite_scene",
         cast: ["me", "alex"],
         script: [stage("irl"), show("alex", { expression: "neutral" })]
@@ -593,8 +653,27 @@ describe("validateScenes", () => {
     expectMessage(invalid.warnings, 'outfit: "hoodie"');
     expectMessage(invalid.warnings, "Available:");
     expectMessage(invalid.warnings, 'expression: "not_a_face"');
+    expectMessage(invalid.warnings, 'body: "twisted"');
     expectMessage(invalid.warnings, 'expression("alex", "not_a_face")');
     expectMessage(invalid.warnings, "never sets an outfit");
+  });
+
+  it("warns when required sprite recipe layers are missing", () => {
+    const result = validateScenes(registryOf(scene({
+      id: "missing_required_sprite_layer_scene",
+      cast: ["me", "alex"],
+      script: [
+        stage("irl"),
+        show("alex", { outfit: "casual", expression: "neutral", body: "guarded" })
+      ]
+    })), {
+      listMissingRequiredSpriteLayers: () => [
+        { id: "body", source: "bodies", key: "guarded" }
+      ]
+    });
+
+    expect(result.errors).toEqual([]);
+    expectMessage(result.warnings, 'recipe layer "body" needs bodies/guarded.png');
   });
 
   it("validates IRL direction commands", () => {

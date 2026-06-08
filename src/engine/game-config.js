@@ -7,6 +7,13 @@ export const DEFAULT_GAME_CONFIG = {
   about: "A visual novel built with JiiShii.",
   firstSceneId: null,
   audioScenes: {},
+  phone: {
+    enabled: true,
+    button: true,
+    apps: ["texting", "gallery", "social"],
+    homeAppOrder: ["texting", "gallery", "social"],
+    defaultWallpaper: null
+  },
   shell: {
     saveTitle: "Save Game",
     loadTitle: "Load Game",
@@ -55,6 +62,7 @@ export function normalizeGameConfig(config = {}) {
     about: config.about ?? DEFAULT_GAME_CONFIG.about,
     firstSceneId: config.firstSceneId ?? DEFAULT_GAME_CONFIG.firstSceneId,
     audioScenes: normalizeAudioScenes(config.audioScenes),
+    phone: normalizePhoneConfig(config.phone),
     shell: {
       saveTitle: shell.saveTitle ?? DEFAULT_GAME_CONFIG.shell.saveTitle,
       loadTitle: shell.loadTitle ?? DEFAULT_GAME_CONFIG.shell.loadTitle,
@@ -89,6 +97,36 @@ export function normalizeGameConfig(config = {}) {
       legacySlotPrefix: storage.legacySlotPrefix ?? DEFAULT_GAME_CONFIG.storage.legacySlotPrefix
     }
   };
+}
+
+/**
+ * Normalizes optional phone system configuration.
+ *
+ * @param {unknown} phone - Candidate phone config.
+ * @returns {object} Normalized phone config.
+ */
+function normalizePhoneConfig(phone) {
+  const source = phone && typeof phone === "object" && !Array.isArray(phone) ? phone : {};
+  const apps = normalizeStringList(source.apps, DEFAULT_GAME_CONFIG.phone.apps);
+  return {
+    enabled: typeof source.enabled === "boolean" ? source.enabled : DEFAULT_GAME_CONFIG.phone.enabled,
+    button: typeof source.button === "boolean" ? source.button : DEFAULT_GAME_CONFIG.phone.button,
+    apps,
+    homeAppOrder: normalizeStringList(source.homeAppOrder, apps),
+    defaultWallpaper: typeof source.defaultWallpaper === "string" ? source.defaultWallpaper : null
+  };
+}
+
+/**
+ * Normalizes a string list with a fallback.
+ *
+ * @param {unknown} value - Candidate list.
+ * @param {string[]} fallback - Fallback list.
+ * @returns {string[]} Normalized list.
+ */
+function normalizeStringList(value, fallback) {
+  const list = Array.isArray(value) ? value : fallback;
+  return [...new Set(list.filter((entry) => typeof entry === "string" && entry.trim()))];
 }
 
 /**

@@ -1,4 +1,19 @@
-import { scene, stage, say, show, transition } from "../vn.js";
+// =============================================================================
+// Example scene module
+//
+// Copy this file to a new .js file in this folder, rename the scene id, and
+// edit the script. Files ending in .example.js are ignored by auto-discovery.
+// =============================================================================
+
+import {
+  background,
+  audioScene,
+  scene,
+  show,
+  stage,
+  say,
+  transition
+} from "../vn.js";
 
 export const basicSceneExample = scene({
   id: "scene_example_basic",
@@ -6,13 +21,16 @@ export const basicSceneExample = scene({
   cast: ["me", "alex"],
   script: [
     stage("irl"),
+    background("starter_room_day"),
+    audioScene("quiet_room", { transition: 800 }),
     show("alex", {
       outfit: "casual",
       expression: "neutral",
-      at: "center"
+      at: "center",
+      transition: "dissolve"
     }),
     say("alex", "This is the shape of a scene."),
+    say("Copy it, rename it, and make it yours."),
     transition("Continue", null)
   ]
 });
-

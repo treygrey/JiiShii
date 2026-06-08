@@ -3,6 +3,7 @@ import { TEXTING_SURFACE } from "../../engine/surface-modules.js";
 
 const DEFAULT_TEXT_WAIT_TIME = 480;
 const PLAYER_REVEAL_DELAY = 140;
+const PHONE_ADVANCE_DEAD_ZONE_EVENTS = ["click", "pointerdown", "pointerup"];
 
 /**
  * Picks a legible text color (near-black or white) for a given bubble color
@@ -18,6 +19,16 @@ function readableTextColor(hex) {
   const b = parseInt(value.slice(4, 6), 16);
   const luminance = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
   return luminance > 0.6 ? "#16161a" : "#ffffff";
+}
+
+/**
+ * Stops an event from bubbling into the stage-level story advance handler.
+ *
+ * @param {Event} event - Pointer or click event from phone chrome.
+ * @returns {void}
+ */
+function stopStoryAdvance(event) {
+  event.stopPropagation();
 }
 
 /**
@@ -45,11 +56,16 @@ export class TextingRenderer {
     this.surface = null;
     this.phoneFrame = null;
     this.messageList = null;
+    this.composerArea = null;
     this.choiceTray = null;
     this.typingIndicator = null;
+    this.notificationHost = null;
     this.saveStatus = null;
     this.activeReveal = null;
     this.lastSide = null;
+    this.selectedThreadId = null;
+    this.lastTextingState = null;
+    this.lastCharacters = null;
   }
 
   /**
@@ -101,17 +117,18 @@ export class TextingRenderer {
         </div>
         <section class="phone-screen">
           <header class="phone-header">
-            <button class="icon-button" type="button" tabindex="-1" title="Back" aria-label="Back">
+            <button class="icon-button thread-back-button" type="button" tabindex="-1" title="Back" aria-label="Back" hidden>
               <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
             </button>
             <div class="header-id">
               <div class="header-avatar" aria-hidden="true"${contact.color ? ` style="background:${contact.color};color:${readableTextColor(contact.color)}"` : ""}>${contact.avatar ?? contact.name?.slice(0, 1) ?? "?"}</div>
               <h1>${contact.name ?? "Messages"}</h1>
             </div>
-            <button class="icon-button" type="button" tabindex="-1" title="FaceTime" aria-label="Call">
+            <button class="icon-button thread-call-button" type="button" tabindex="-1" title="Call" aria-label="Call">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 10l5-3v10l-5-3"></path><rect x="3" y="7" width="12" height="10" rx="2.5"></rect></svg>
             </button>
           </header>
+          <div class="phone-notification-host" aria-live="polite"></div>
           <div class="message-list" aria-live="polite"></div>
           <div class="typing-indicator message-row message-row--left" hidden>
             <div class="message-bubble typing-bubble"><span></span><span></span><span></span></div>
@@ -121,15 +138,66 @@ export class TextingRenderer {
             <p class="save-status" aria-live="polite"></p>
           </footer>
         </section>
+        <nav class="phone-nav-bar" aria-label="Phone navigation">
+          <button class="phone-nav-button" type="button" aria-label="System back" data-phone-nav="back">
+            <span class="phone-nav-glyph" aria-hidden="true">‹</span>
+          </button>
+          <button class="phone-nav-button phone-home-button" type="button" aria-label="Home">
+            <span class="phone-home-pill" aria-hidden="true"></span>
+          </button>
+          <button class="phone-nav-button" type="button" aria-label="Settings">
+            <span class="phone-nav-glyph" aria-hidden="true">Settings</span>
+          </button>
+        </nav>
       </section>
     `;
     this.appRoot.append(this.surface);
 
     this.phoneFrame = this.surface.querySelector(".phone-frame");
     this.messageList = this.surface.querySelector(".message-list");
+    this.composerArea = this.surface.querySelector(".composer-area");
     this.choiceTray = this.surface.querySelector(".choice-tray");
     this.typingIndicator = this.surface.querySelector(".typing-indicator");
+    this.notificationHost = this.surface.querySelector(".phone-notification-host");
     this.saveStatus = this.surface.querySelector(".save-status");
+    this.bindAdvanceDeadZones();
+    this.surface.querySelector(".thread-back-button")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.selectedThreadId = null;
+      this.renderThreadList(this.lastTextingState, { characters: this.lastCharacters });
+    });
+    this.surface.querySelector("[data-phone-nav='back']")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (this.selectedThreadId && this.runner?.isTextingInboxMode?.()) {
+        this.selectedThreadId = null;
+        this.renderThreadList(this.lastTextingState, { characters: this.lastCharacters });
+        return;
+      }
+      this.runner?.goBackPhoneApp?.();
+    });
+    this.surface.querySelector(".phone-home-button")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (this.runner?.state?.visuals?.phone?.isButtonEnabled === false) {
+        return;
+      }
+      this.runner?.openPhoneApp?.("home");
+    });
+  }
+
+  /**
+   * Marks phone chrome as non-story input. The message thread remains tappable
+   * for normal advance, while status/header/navigation controls behave like
+   * real OS/app UI and never consume a story click.
+   *
+   * @returns {void}
+   */
+  bindAdvanceDeadZones() {
+    const deadZones = this.surface.querySelectorAll(".status-bar, .phone-header, .phone-nav-bar");
+    for (const deadZone of deadZones) {
+      for (const eventName of PHONE_ADVANCE_DEAD_ZONE_EVENTS) {
+        deadZone.addEventListener(eventName, stopStoryAdvance);
+      }
+    }
   }
 
   /**
@@ -145,15 +213,20 @@ export class TextingRenderer {
     this.surface?.remove();
     this.surface = null;
     this.messageList = null;
+    this.composerArea = null;
     this.choiceTray = null;
     this.typingIndicator = null;
+    this.notificationHost = null;
     this.tapHint = null;
     this.saveStatus = null;
+    this.selectedThreadId = null;
+    this.lastTextingState = null;
+    this.lastCharacters = null;
   }
 
   /**
-   * Switches the phone to another conversation: re-titles the header and clears
-   * the thread. Bubble colors follow each message's sender automatically.
+   * Switches the phone to another conversation header. Bubble colors follow
+   * each message's sender automatically.
    *
    * @param {object} contact - { name, color, avatar, subtitle }.
    * @returns {void}
@@ -162,23 +235,85 @@ export class TextingRenderer {
     if (!this.surface) {
       return;
     }
-    const avatar = this.surface.querySelector(".header-avatar");
-    const nameEl = this.surface.querySelector(".header-id h1");
-    const subtitleEl = this.surface.querySelector(".thread-title p");
-    if (avatar) {
-      avatar.textContent = contact.avatar ?? (contact.name ?? "?").slice(0, 1);
-      if (contact.color) {
-        avatar.style.background = contact.color;
-        avatar.style.color = readableTextColor(contact.color);
-      }
-    }
-    if (nameEl) {
-      nameEl.textContent = contact.name ?? "Messages";
-    }
-    if (subtitleEl && contact.subtitle) {
-      subtitleEl.textContent = contact.subtitle;
-    }
+    this.clearThreadNotification();
+    this.selectedThreadId = contact?.id ?? contact?.name ?? null;
+    this.setThreadHeader(contact);
     this.reset();
+  }
+
+  /**
+   * Shows a tappable in-phone notification for a different message thread.
+   * This is phone chrome, so tapping it must not bubble into story advance.
+   *
+   * @param {object} contact - Incoming thread contact.
+   * @param {object} options - Notification callbacks.
+   * @param {Function} options.onSelect - Called when the player opens it.
+   * @returns {void}
+   */
+  showThreadNotification(contact, { onSelect }) {
+    if (!this.notificationHost) {
+      onSelect();
+      return;
+    }
+    this.clearThreadNotification();
+
+    const button = document.createElement("button");
+    button.className = "phone-thread-notification";
+    button.type = "button";
+    button.innerHTML = `
+      <span class="phone-thread-notification-avatar" aria-hidden="true"></span>
+      <span class="phone-thread-notification-copy">
+        <strong>${contact.name ?? "Messages"}</strong>
+        <span>New message</span>
+      </span>
+    `;
+
+    const avatar = button.querySelector(".phone-thread-notification-avatar");
+    avatar.textContent = contact.avatar ?? (contact.name ?? "?").slice(0, 1);
+    if (contact.color) {
+      avatar.style.background = contact.color;
+      avatar.style.color = readableTextColor(contact.color);
+    }
+
+    for (const eventName of PHONE_ADVANCE_DEAD_ZONE_EVENTS) {
+      button.addEventListener(eventName, stopStoryAdvance);
+    }
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.clearThreadNotification();
+      onSelect();
+    });
+
+    this.notificationHost.append(button);
+  }
+
+  /**
+   * Shows a generic phone-app notification using the existing Android toast
+   * style. This keeps authored phone notifications working even while the
+   * player is already inside a text thread.
+   *
+   * @param {object} notification - Shared phone notification state.
+   * @param {object} options - Notification callbacks.
+   * @param {Function} options.onSelect - Called when the player opens it.
+   * @returns {void}
+   */
+  showPhoneToast(notification, { onSelect } = {}) {
+    this.showThreadNotification({
+      name: notification?.text ?? "Notification",
+      avatar: (notification?.app ?? "!").slice(0, 1).toUpperCase(),
+      color: "#5f6368"
+    }, { onSelect });
+  }
+
+  /**
+   * Removes any visible phone-thread notification.
+   *
+   * @returns {void}
+   */
+  clearThreadNotification() {
+    if (this.notificationHost) {
+      this.notificationHost.innerHTML = "";
+    }
   }
 
   /**
@@ -190,12 +325,180 @@ export class TextingRenderer {
    * @returns {void}
    */
   renderTextingState(textingState, { characters }) {
-    if (textingState?.contact) {
-      this.setThreadHeader(textingState.contact);
+    this.lastTextingState = textingState;
+    this.lastCharacters = characters;
+    if (!this.surface || !this.messageList) {
+      return;
+    }
+    if (this.shouldShowInbox()) {
+      if (this.selectedThreadId) {
+        this.renderThreadById(textingState, { characters }, this.selectedThreadId);
+        return;
+      }
+      this.renderThreadList(textingState, { characters });
+      return;
+    }
+    this.selectedThreadId = textingState?.currentThreadId ?? null;
+    this.renderThread(textingState?.contact, textingState?.messages ?? [], { characters });
+  }
+
+  /**
+   * Returns whether Messages is being opened as a phone app rather than as the
+   * active story-driving texting surface.
+   *
+   * @returns {boolean} True when the inbox should be shown first.
+   */
+  shouldShowInbox() {
+    return Boolean(this.runner?.isTextingInboxMode?.());
+  }
+
+  /**
+   * Renders the conversation selection screen.
+   *
+   * @param {object} textingState - Texting visual state.
+   * @param {object} options - Projection options.
+   * @param {Map<string, object>} options.characters - Character defaults.
+   * @returns {void}
+   */
+  renderThreadList(textingState = {}, { characters } = {}) {
+    if (!this.surface) {
+      return;
+    }
+    this.setInboxHeader();
+    this.reset();
+    const threads = this.sortedThreads(textingState);
+    if (!threads.length) {
+      this.messageList.innerHTML = `<div class="phone-empty-state">No conversations</div>`;
+      return;
+    }
+    const threadList = document.createElement("div");
+    threadList.className = "thread-list";
+    for (const thread of threads) {
+      threadList.append(this.renderThreadRow(thread, characters));
+    }
+    this.messageList.append(threadList);
+  }
+
+  /**
+   * Renders one conversation row for the inbox.
+   *
+   * @param {object} thread - Thread state.
+   * @param {Map<string, object>} characters - Character defaults.
+   * @returns {Element} Thread row button.
+   */
+  renderThreadRow(thread, characters) {
+    const contact = this.resolveThreadContact(thread, characters);
+    const latestMessage = thread.messages.at(-1);
+    const preview = latestMessage?.kind === "image"
+      ? "Photo"
+      : thread.preview ?? latestMessage?.message ?? "New message";
+    const button = document.createElement("button");
+    button.className = `thread-list-row${thread.unread ? " is-unread" : ""}`;
+    button.type = "button";
+    button.innerHTML = `
+      <span class="thread-list-avatar" aria-hidden="true"></span>
+      <span class="thread-list-copy">
+        <strong>${contact.name ?? thread.id}</strong>
+        <span>${preview}</span>
+      </span>
+      ${thread.unread ? `<span class="thread-unread-dot" aria-label="Unread"></span>` : ""}
+    `;
+    const avatar = button.querySelector(".thread-list-avatar");
+    avatar.textContent = contact.avatar ?? (contact.name ?? thread.id).slice(0, 1);
+    if (contact.color) {
+      avatar.style.background = contact.color;
+      avatar.style.color = readableTextColor(contact.color);
+    }
+    for (const eventName of PHONE_ADVANCE_DEAD_ZONE_EVENTS) {
+      button.addEventListener(eventName, stopStoryAdvance);
+    }
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      this.selectedThreadId = thread.id;
+      if (this.runner?.openTextThread?.(thread.id)) {
+        return;
+      }
+      this.renderThreadById(this.lastTextingState, { characters: this.lastCharacters }, thread.id);
+    });
+    return button;
+  }
+
+  /**
+   * Renders one saved conversation by id.
+   *
+   * @param {object} textingState - Texting visual state.
+   * @param {object} options - Projection options.
+   * @param {string} threadId - Thread id.
+   * @returns {void}
+   */
+  renderThreadById(textingState = {}, { characters } = {}, threadId) {
+    const thread = textingState?.threads?.[threadId];
+    if (!thread) {
+      this.selectedThreadId = null;
+      this.renderThreadList(textingState, { characters });
+      return;
+    }
+    this.renderThread(this.resolveThreadContact(thread, characters), thread.messages, { characters });
+  }
+
+  /**
+   * Renders a message thread.
+   *
+   * @param {object} contact - Contact header.
+   * @param {Array<object>} messages - Thread messages.
+   * @param {object} options - Projection options.
+   * @param {Map<string, object>} options.characters - Character defaults.
+   * @returns {void}
+   */
+  renderThread(contact, messages = [], { characters } = {}) {
+    if (!this.surface || !this.messageList) {
+      return;
+    }
+    if (contact) {
+      this.setThreadHeader(contact);
     }
     this.reset();
-    for (const message of textingState?.messages ?? []) {
+    for (const message of messages) {
       this.renderMessage(message, characters);
+    }
+  }
+
+  /**
+   * Sorts conversations by most recent received text.
+   *
+   * @param {object} textingState - Texting visual state.
+   * @returns {Array<object>} Sorted threads.
+   */
+  sortedThreads(textingState = {}) {
+    return Object.values(textingState?.threads ?? {})
+      .sort((left, right) => (right.lastReceivedAt ?? 0) - (left.lastReceivedAt ?? 0));
+  }
+
+  /**
+   * Resolves thread contact defaults.
+   *
+   * @param {object} thread - Thread state.
+   * @param {Map<string, object>} characters - Character defaults.
+   * @returns {object} Contact header.
+   */
+  resolveThreadContact(thread, characters) {
+    const contact = thread.contact ?? { id: thread.id, name: thread.id };
+    const character = characters?.get?.(contact.id) ?? {};
+    return { ...character, ...contact };
+  }
+
+  /**
+   * Sets the app header for the inbox.
+   *
+   * @returns {void}
+   */
+  setInboxHeader() {
+    this.surface?.querySelector(".thread-back-button")?.setAttribute("hidden", "");
+    this.surface?.querySelector(".thread-call-button")?.setAttribute("hidden", "");
+    this.surface?.querySelector(".header-avatar")?.setAttribute("hidden", "");
+    const nameEl = this.surface?.querySelector(".header-id h1");
+    if (nameEl) {
+      nameEl.textContent = "Messages";
     }
   }
 
@@ -212,6 +515,9 @@ export class TextingRenderer {
     const avatar = this.surface.querySelector(".header-avatar");
     const nameEl = this.surface.querySelector(".header-id h1");
     const subtitleEl = this.surface.querySelector(".thread-title p");
+    this.surface.querySelector(".thread-back-button")?.toggleAttribute("hidden", !this.shouldShowInbox());
+    this.surface.querySelector(".thread-call-button")?.removeAttribute("hidden");
+    avatar?.removeAttribute("hidden");
     if (avatar) {
       avatar.textContent = contact.avatar ?? (contact.name ?? "?").slice(0, 1);
       if (contact.color) {
@@ -373,6 +679,7 @@ export class TextingRenderer {
     this.hideTapHint();
     this.choiceTray.innerHTML = "";
     this.choiceTray.classList.remove("is-transition");
+    this.composerArea?.classList.add("is-active");
 
     for (const option of choiceCommand.options) {
       const button = document.createElement("button");
@@ -401,6 +708,7 @@ export class TextingRenderer {
     this.hideTapHint();
     this.choiceTray.innerHTML = "";
     this.choiceTray.classList.add("is-transition");
+    this.composerArea?.classList.add("is-active");
 
     const button = document.createElement("button");
     button.className = "transition-button";
@@ -424,6 +732,7 @@ export class TextingRenderer {
       this.choiceTray.innerHTML = "";
       this.choiceTray.classList.remove("is-transition");
     }
+    this.composerArea?.classList.remove("is-active");
   }
 
   /**
@@ -469,7 +778,14 @@ export class TextingRenderer {
    * @returns {void}
    */
   renderMessage(message, characters) {
+    if (!this.messageList) {
+      return;
+    }
     const resolved = this.resolveMessage(message, characters);
+    const renderKey = resolved.__jiishiiMessageKey;
+    if (renderKey && this.hasRenderedMessage(renderKey)) {
+      return;
+    }
     this.onLog(resolved);
 
     if (resolved.timestamp) {
@@ -483,6 +799,9 @@ export class TextingRenderer {
     const side = resolved.side ?? "left";
     const row = document.createElement("article");
     row.className = `message-row message-row--${side}`;
+    if (renderKey) {
+      row.dataset.messageKey = renderKey;
+    }
     if (this.lastSide === side) {
       row.classList.add("is-grouped");
     }
@@ -490,9 +809,7 @@ export class TextingRenderer {
     const bubble = document.createElement("div");
     bubble.className = "message-bubble";
 
-    // Incoming bubbles wear the speaker's identity color (Player's outgoing blue
-    // is handled in CSS). Text color flips to stay legible on light hues.
-    if (side === "left" && resolved.color) {
+    if (resolved.color) {
       bubble.style.background = resolved.color;
       bubble.style.color = readableTextColor(resolved.color);
     }
@@ -526,6 +843,17 @@ export class TextingRenderer {
     this.messageList.append(row);
     this.lastSide = side;
     this.scrollToLatest();
+  }
+
+  /**
+   * Checks whether a state-owned text message is already in the DOM.
+   *
+   * @param {string} renderKey - Private render key stored on visual messages.
+   * @returns {boolean} True when the message has already rendered.
+   */
+  hasRenderedMessage(renderKey) {
+    return [...this.messageList.querySelectorAll("[data-message-key]")]
+      .some((element) => element.dataset.messageKey === renderKey);
   }
 
   /**
@@ -570,22 +898,22 @@ export class TextingRenderer {
   }
 
   /**
-   * Signals "tap to continue" with a soft breathing glow around the phone edge
-   * instead of an explicit icon.
+   * Signals that the current text burst has finished by leaving a quiet status
+   * marker in the typing indicator lane.
    *
    * @returns {void}
    */
   showTapHint() {
-    this.phoneFrame?.classList.add("is-awaiting");
+    this.hideTyping();
   }
 
   /**
-   * Clears the tap-to-continue edge glow.
+   * Clears the ready marker from the typing indicator lane.
    *
    * @returns {void}
    */
   hideTapHint() {
-    this.phoneFrame?.classList.remove("is-awaiting");
+    this.hideTyping();
   }
 
   /**

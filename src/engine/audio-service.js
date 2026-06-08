@@ -17,6 +17,9 @@ export class BrowserAudioService {
     this.ambience = null;
     this.ambienceId = null;
     this.voice = null;
+    this.managedSounds = new Map();
+    this.transientMeta = new WeakMap();
+    this.transientTimers = new WeakMap();
   }
 
   /**
@@ -188,13 +191,29 @@ export class BrowserAudioService {
   }
 
   /**
+   * Stops a named sound effect that was started with sound(id, { as }).
+   *
+   * @param {string} handle - Author-facing sound handle.
+   * @param {object} [options] - Stop options.
+   * @returns {void}
+   */
+  stopSound(handle, options = {}) {
+    const audio = this.managedSounds.get(handle);
+    if (!audio) {
+      return;
+    }
+    this.managedSounds.delete(handle);
+    this.stopTransientAudio(audio, options);
+  }
+
+  /**
    * Plays a one-shot voice line, replacing any current voice line.
    *
    * @param {object} command - Voice command.
    * @returns {void}
    */
   playVoice(command) {
-    this.voice?.pause();
+    this.stopTransientAudio(this.voice, { fadeOut: command.fadeOut });
     this.voice = this.playOneShot(command, "voice");
   }
 
@@ -215,8 +234,12 @@ export class BrowserAudioService {
    * @returns {void}
    */
   stopTransient() {
-    this.voice?.pause();
+    this.stopTransientAudio(this.voice);
     this.voice = null;
+    for (const audio of this.managedSounds.values()) {
+      this.stopTransientAudio(audio);
+    }
+    this.managedSounds.clear();
   }
 
   /**
@@ -232,11 +255,127 @@ export class BrowserAudioService {
       this.onLog(`Missing audio asset: ${command.id}`);
       return null;
     }
+    const handle = command.as ?? command.handle ?? null;
+    if (handle && channel === "sound") {
+      this.stopSound(handle, { fadeOut: command.fadeOut });
+    }
     const audio = new Audio(url);
-    audio.volume = this.resolveVolume(command.volume ?? 1, channel);
+    const targetVolume = this.resolveVolume(command.volume ?? 1, channel);
+    audio.volume = command.fadeIn ? 0 : targetVolume;
     audio.playbackRate = command.rate ?? 1;
+    audio.loop = Boolean(command.loop) && command.end == null && command.duration == null;
+    if (command.start != null) {
+      audio.currentTime = millisecondsToMediaSeconds(command.start);
+    }
+    if (handle && channel === "sound") {
+      this.managedSounds.set(handle, audio);
+    }
+    this.bindTransientCleanup(audio, {
+      handle: channel === "sound" ? handle : null,
+      isVoice: channel === "voice"
+    });
     audio.play().catch(() => {});
+    if (command.fadeIn) {
+      this.fade(audio, 0, targetVolume, command.fadeIn);
+    }
+    this.scheduleTransientStop(audio, command);
     return audio;
+  }
+
+  /**
+   * Schedules authored crop and duration stops for transient audio.
+   *
+   * @private
+   * @param {HTMLAudioElement} audio - Transient audio element.
+   * @param {object} command - Audio command.
+   * @returns {void}
+   */
+  scheduleTransientStop(audio, command) {
+    const durationMs = resolveTransientDuration(command);
+    if (durationMs == null) {
+      return;
+    }
+    const start = millisecondsToMediaSeconds(command.start ?? 0);
+    const fadeOut = command.fadeOut ?? 0;
+    const timer = globalThis.setTimeout(() => {
+      if (command.loop) {
+        audio.currentTime = start;
+        audio.play().catch(() => {});
+        this.scheduleTransientStop(audio, command);
+        return;
+      }
+      this.stopTransientAudio(audio, { fadeOut });
+    }, Math.max(0, durationMs));
+    this.transientTimers.set(audio, timer);
+  }
+
+  /**
+   * Registers cleanup hooks for transient audio that ends on its own.
+   *
+   * @private
+   * @param {HTMLAudioElement} audio - Transient audio element.
+   * @param {object} options - Cleanup options.
+   * @param {string|null} [options.handle] - Named sound handle.
+   * @param {boolean} [options.isVoice] - Whether this is the active voice line.
+   * @returns {void}
+   */
+  bindTransientCleanup(audio, { handle = null, isVoice = false } = {}) {
+    this.transientMeta.set(audio, { handle, isVoice });
+    audio.addEventListener?.("ended", () => this.cleanupTransientAudio(audio), { once: true });
+  }
+
+  /**
+   * Stops a transient audio element and clears its crop/duration timer.
+   *
+   * @private
+   * @param {HTMLAudioElement|null} audio - Audio element to stop.
+   * @param {object} [options] - Stop options.
+   * @param {number} [options.fadeOut] - Fade-out duration in ms.
+   * @returns {void}
+   */
+  stopTransientAudio(audio, { fadeOut = 0 } = {}) {
+    if (!audio) {
+      return;
+    }
+    this.cleanupTransientAudio(audio);
+    this.fadeOutAndStop(audio, { fadeOut });
+  }
+
+  /**
+   * Removes transient bookkeeping for an audio element.
+   *
+   * @private
+   * @param {HTMLAudioElement} audio - Audio element.
+   * @returns {void}
+   */
+  cleanupTransientAudio(audio) {
+    this.clearTransientTimer(audio);
+    const meta = this.transientMeta.get(audio);
+    if (!meta) {
+      return;
+    }
+    if (meta.handle && this.managedSounds.get(meta.handle) === audio) {
+      this.managedSounds.delete(meta.handle);
+    }
+    if (meta.isVoice && this.voice === audio) {
+      this.voice = null;
+    }
+    this.transientMeta.delete(audio);
+  }
+
+  /**
+   * Clears the scheduled crop/duration timer for a transient audio element.
+   *
+   * @private
+   * @param {HTMLAudioElement} audio - Audio element.
+   * @returns {void}
+   */
+  clearTransientTimer(audio) {
+    const timer = this.transientTimers.get(audio);
+    if (timer != null) {
+      globalThis.clearTimeout(timer);
+      this.transientTimers.delete(audio);
+    }
   }
 
   /**
@@ -320,4 +459,34 @@ export class BrowserAudioService {
  */
 function clampVolume(volume) {
   return Math.min(1, Math.max(0, volume));
+}
+
+/**
+ * Resolves how long a transient should play before it is stopped or looped.
+ * `duration`, `start`, and `end` are authored in milliseconds. Browser media
+ * elements use seconds internally, but the author-facing API stays consistent.
+ *
+ * @param {object} command - Sound or voice command.
+ * @returns {number|null} Duration in milliseconds, or null for natural length.
+ */
+function resolveTransientDuration(command) {
+  if (command.duration != null) {
+    return command.duration;
+  }
+  if (command.end == null) {
+    return null;
+  }
+  const start = command.start ?? 0;
+  const rate = Math.max(0.01, command.rate ?? 1);
+  return Math.max(0, (command.end - start) / rate);
+}
+
+/**
+ * Converts author-facing millisecond timing to HTMLMediaElement seconds.
+ *
+ * @param {number} milliseconds - Authored time in milliseconds.
+ * @returns {number} Media timeline time in seconds.
+ */
+function millisecondsToMediaSeconds(milliseconds) {
+  return milliseconds / 1000;
 }

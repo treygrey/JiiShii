@@ -423,6 +423,7 @@ Sprite state tracked by the runner:
 {
   id: "alex",
   outfit: "casual",
+  body: "default",
   expression: "neutral",
   side: "left",
   flip: false,
@@ -432,7 +433,10 @@ Sprite state tracked by the runner:
   scale: 1,
   alpha: 1,
   z: null,
-  layer: "characters"
+  layer: "characters",
+  transition: null,
+  duration: null,
+  easing: null
 }
 ```
 
@@ -448,17 +452,9 @@ Known position presets include:
 - `offscreenLeft`
 - `offscreenRight`
 
-Known sprite transition presets include:
-
-- `cut`
-- `dissolve`
-- `fade`
-- `move`
-- `ease`
-- `moveInLeft`
-- `moveInRight`
-- `moveOutLeft`
-- `moveOutRight`
+Sprite transitions are named presets. Use them in `transition`, optionally with
+`duration` or `easing`; see `docs/SPRITE_COOKBOOK.md` for built-in replacement
+behavior and custom transition registration.
 
 The validator checks transform numbers. `scale` must be greater than zero,
 `alpha` must be between `0` and `1`, `z` must be a finite number, and `x`/`y`
@@ -561,10 +557,8 @@ Channel semantics:
 - `sound`: transient one-shot, not replayed during rollback/load reconstruction.
 - `voice`: transient one-shot, replaces current voice, not durable in v1.
 
-Replacing music or ambience crossfades when a fade/transition duration is
-provided. Player preferences include separate master, music, ambience, sound,
-and voice volume sliders. Command-level `volume` values multiply through those
-mixer settings.
+For fades, named sounds, crops, duration cuts, loop windows, speed changes, and
+rollback rules, see `docs/AUDIO_COOKBOOK.md`.
 
 `pause()` is a skippable timed beat. A click advances past it. `flash()` and
 `shake()` are transient compositor effects; pair them with `sound()` and
@@ -653,12 +647,18 @@ add("trust", 1)
 setFlag("metAlex")
 clearFlag("metAlex")
 roll("die", 1, 6)
-condition({ var: "trust", op: ">=", value: 3, then: "close", else: "guarded" })
+condition({ flag: "metAlex", then: "warm", else: "guarded" })
+condition({ var: "trust", atLeast: 3, then: "close", else: "guarded" })
+condition({ var: "name", hasText: true, then: "named", else: "anonymous" })
 ```
 
 Variables, choices, PRNG state, surfaces, visuals, audio, and reader history are
 serialized or snapshotted by the runner. That is why rollback can rebuild the
 same moment instead of guessing from renderer DOM.
+
+Condition checks use author-facing comparison rules instead of raw JavaScript
+strict equality. Empty values, `0`, `"0"`, `false`, `"false"`, `"no"`, and
+`"off"` all read as off; number-looking strings compare as numbers.
 
 ## Validation Rules To Remember
 

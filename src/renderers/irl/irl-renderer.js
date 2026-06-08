@@ -1,8 +1,20 @@
 import { resolveIrlPlacement, resolveIrlTransition } from "../../engine/irl-stage-direction.js";
 import { IRL_SURFACE } from "../../engine/surface-modules.js";
+import { createChoiceBand } from "../choice-band.js";
 
 const DEFAULT_OUTFIT = "hoodie";
 const DEFAULT_EXPRESSION = "neutral";
+const DEFAULT_BODY = "default";
+
+/**
+ * Converts a recipe layer id into a CSS-safe class suffix.
+ *
+ * @param {string} value - Recipe layer id.
+ * @returns {string} CSS-safe suffix.
+ */
+function classSuffix(value) {
+  return String(value ?? "layer").replace(/[^a-z0-9_-]/gi, "-");
+}
 
 /**
  * Renders the IRL VN surface as a compositor layer: a transparent stage that
@@ -24,7 +36,7 @@ export class IrlRenderer {
     this.getSettings = getSettings ?? (() => ({ textSpeed: 0.6 }));
     this.onLog = onLog ?? (() => {});
     this.resolveImage = resolveImage ?? (() => null);
-    this.resolveSprite = resolveSprite ?? (() => ({ outfit: null, head: null, foreground: null, expression: null }));
+    this.resolveSprite = resolveSprite ?? (() => ({ layers: [] }));
     this.resolveExpression = resolveExpression ?? (() => null);
     this.runner = null;
     this.surface = null;
@@ -194,6 +206,7 @@ export class IrlRenderer {
     const character = characters.get(id) ?? {};
     const outfit = command.outfit ?? prev.outfit ?? character.defaultOutfit ?? DEFAULT_OUTFIT;
     const expression = command.expression ?? prev.expression ?? character.defaultExpression ?? DEFAULT_EXPRESSION;
+    const body = command.body ?? prev.body ?? character.defaultBody ?? DEFAULT_BODY;
     const overrideSide = command.side ?? prev.side;
     // Horizontal mirror for staging variety / facing into the scene. Sticky:
     // once set it persists across expression/outfit changes until set again.
@@ -203,6 +216,7 @@ export class IrlRenderer {
       id,
       outfit,
       expression,
+      body,
       side: overrideSide,
       flip,
       at: command.at ?? prev.at ?? overrideSide ?? null,
@@ -227,7 +241,7 @@ export class IrlRenderer {
    * @param {boolean} [options.instant] - Replace figures without transition.
    * @returns {void}
    */
-  renderSpriteState(spriteState, { instant = false } = {}) {
+  renderSpriteState(spriteState, { instant = false, vars = {} } = {}) {
     if (!this.characterLayer) {
       return;
     }
@@ -254,7 +268,7 @@ export class IrlRenderer {
     }
 
     for (const sprite of visible) {
-      this._renderSprite(sprite, { instant });
+      this._renderSprite(sprite, { instant, vars });
     }
 
     this._updateSpritePositions(spriteState?.focus ?? null);
@@ -394,15 +408,16 @@ export class IrlRenderer {
    * @param {boolean} [options.instant] - Replace figure instantly.
    * @returns {void}
    */
-  _renderSprite(sprite, { instant = false } = {}) {
+  _renderSprite(sprite, { instant = false, vars = {} } = {}) {
     if (!this.characterLayer) {
       return;
     }
 
-    const { id, outfit, expression, side, flip } = sprite;
+    const { id, outfit, expression, body, side, flip } = sprite;
     this.sprites.set(id, {
       outfit,
       expression,
+      body: body ?? DEFAULT_BODY,
       side: side ?? null,
       flip: Boolean(flip),
       at: sprite.at ?? null,
@@ -430,8 +445,9 @@ export class IrlRenderer {
 
     element.classList.remove("is-leaving");
     element.style.setProperty("--flip", flip ? "-1" : "1");
-    this._applySpriteTransform(element, this.sprites.get(id), { instant, isNewElement });
-    this._renderFigure(element, id, outfit, expression, { instant });
+    const projectedSprite = this.sprites.get(id);
+    const transition = this._applySpriteTransform(element, projectedSprite, { instant, isNewElement });
+    this._renderFigure(element, id, outfit, expression, body ?? DEFAULT_BODY, { instant, vars, transition });
   }
 
   /**
@@ -443,7 +459,7 @@ export class IrlRenderer {
    * @param {object} [options] - Projection options.
    * @param {boolean} [options.instant] - Skip authored animation.
    * @param {boolean} [options.isNewElement] - True when this sprite just mounted.
-   * @returns {void}
+   * @returns {object} Resolved transition descriptor.
    */
   _applySpriteTransform(element, sprite = {}, { instant = false, isNewElement = false } = {}) {
     const placement = resolveIrlPlacement(sprite);
@@ -459,10 +475,11 @@ export class IrlRenderer {
         alpha: 0
       });
       requestAnimationFrame(() => this._writePlacement(element, placement));
-      return;
+      return transition;
     }
 
     this._writePlacement(element, placement);
+    return transition;
   }
 
   /**
@@ -518,7 +535,8 @@ export class IrlRenderer {
     state.expression = expression;
     const element = this.characterLayer.querySelector(`[data-character-id="${id}"]`);
     if (element) {
-      this._renderFigure(element, id, state.outfit, expression);
+      const transition = resolveIrlTransition(state.transition, state);
+      this._renderFigure(element, id, state.outfit, expression, state.body ?? DEFAULT_BODY, { transition });
     }
   }
 
@@ -536,22 +554,29 @@ export class IrlRenderer {
    * @param {string} expression - Expression name.
    * @returns {void}
    */
-  _renderFigure(element, id, outfit, expression, { instant = false } = {}) {
+  _renderFigure(element, id, outfit, expression, body, { instant = false, vars = {}, transition = null } = {}) {
     const current = element.querySelector(".sprite-figure:last-child");
+    const varsSignature = JSON.stringify(vars ?? {});
 
     // Expression-only change on the same outfit: swap just the face layer in
     // place — no second figure to cross-fade. Cross-fading two full copies made
     // the soft silhouette edges (anti-aliased outline, hair wisps) double up and
     // bloom into a halo on every line. The face sits interior over the opaque
     // head, so swapping it in place can't halo the silhouette.
-    if (current && current.dataset.outfit === String(outfit ?? "")) {
+    if (
+      current &&
+      current.dataset.outfit === String(outfit ?? "") &&
+      current.dataset.body === String(body ?? "") &&
+      current.dataset.vars === varsSignature
+    ) {
       const url = this.resolveExpression(id, expression);
-      let faceImg = current.querySelector(".sprite-expression");
+      let faceImg = current.querySelector('[data-layer-id="expression"]');
       if (url) {
         if (!faceImg) {
           faceImg = document.createElement("img");
           faceImg.className = "sprite-layer sprite-expression";
-          current.insertBefore(faceImg, current.querySelector(".sprite-foreground") ?? null);
+          faceImg.dataset.layerId = "expression";
+          current.insertBefore(faceImg, current.querySelector('[data-layer-id="foregroundHair"]') ?? null);
         }
         faceImg.src = url;
         faceImg.alt = `${id} ${expression}`;
@@ -562,23 +587,31 @@ export class IrlRenderer {
       return;
     }
 
-    const layers = this.resolveSprite(id, outfit, expression);
+    const resolved = this.resolveSprite(id, outfit, expression, body, vars);
     const figure = document.createElement("div");
     figure.className = "sprite-figure";
     figure.dataset.outfit = String(outfit ?? "");
     figure.dataset.expression = String(expression ?? "");
-    // Bottom → top: head (back hair + base) · outfit (body) · expression (face) ·
-    // foreground hair (front strands over the face). Foreground hair is optional.
-    figure.innerHTML = `
-      ${layers.head ? `<img class="sprite-layer sprite-head" src="${layers.head}" alt="" />` : ""}
-      ${layers.outfit ? `<img class="sprite-layer sprite-outfit" src="${layers.outfit}" alt="" />` : ""}
-      ${layers.expression ? `<img class="sprite-layer sprite-expression" src="${layers.expression}" alt="${id} ${expression}" />` : ""}
-      ${layers.foreground ? `<img class="sprite-layer sprite-foreground" src="${layers.foreground}" alt="" />` : ""}
-    `;
+    // Bottom to top follows the resolved recipe order. The renderer does not
+    // need to know which optional overlays a character recipe may include.
+    figure.dataset.body = String(body ?? "");
+    figure.dataset.vars = varsSignature;
+
+    for (const layer of resolved.layers ?? []) {
+      const image = document.createElement("img");
+      image.className = `sprite-layer sprite-${classSuffix(layer.id)}`;
+      image.dataset.layerId = layer.id;
+      image.dataset.layerSource = layer.source;
+      image.src = layer.url;
+      image.alt = layer.id === "expression" ? `${id} ${expression}` : "";
+      figure.append(image);
+    }
 
     const previous = [...element.querySelectorAll(".sprite-figure")];
     element.append(figure);
-    const isOutfitChange = previous.some((item) => item.dataset.outfit !== String(outfit ?? ""));
+    const isFullLayerChange = previous.some(
+      (item) => item.dataset.outfit !== String(outfit ?? "") || item.dataset.body !== String(body ?? "")
+    );
 
     // Wait for the new images to decode before fading, so a never-before-seen
     // outfit/expression doesn't flash blank mid-crossfade. Cached layers resolve
@@ -600,9 +633,13 @@ export class IrlRenderer {
       // legs crop naturally; shorter art (1024×1344, cropped at the thigh) sits
       // fully in frame. Set before the figure shows, so framing never flashes.
       this._updateCanvasFraming(element, id, imgs);
-      if (instant || isOutfitChange) {
+      if (instant) {
         previous.forEach((f) => f.remove());
         figure.classList.add("is-shown");
+        return;
+      }
+      if (isFullLayerChange) {
+        this._replaceFullLayerFigure(previous, figure, transition);
         return;
       }
       requestAnimationFrame(() => figure.classList.add("is-shown"));
@@ -612,8 +649,89 @@ export class IrlRenderer {
       };
       figure.addEventListener("transitionend", cleanup);
       // Fallback in case transitionend doesn't fire (e.g. reduced motion).
-      window.setTimeout(cleanup, 400);
+      window.setTimeout(cleanup, Math.max(transition?.duration ?? 400, 400));
     });
+  }
+
+  /**
+   * Replaces a full body/outfit figure without overlapping two silhouettes.
+   *
+   * @private
+   * @param {HTMLElement[]} previous - Figures currently visible.
+   * @param {HTMLElement} nextFigure - Newly decoded figure.
+   * @param {object|null} transition - Resolved transition descriptor.
+   * @returns {void}
+   */
+  _replaceFullLayerFigure(previous, nextFigure, transition = null) {
+    const replacement = transition?.replacement ?? "cut";
+    const duration = Math.max(transition?.duration ?? 0, 0);
+    if (!previous.length || duration === 0 || replacement === "cut") {
+      previous.forEach((figure) => figure.remove());
+      nextFigure.classList.add("is-shown");
+      return;
+    }
+
+    if (replacement === "dip") {
+      this._replaceFigureWithDip(previous, nextFigure, duration);
+      return;
+    }
+
+    if (replacement === "flip") {
+      this._replaceFigureWithFlip(previous, nextFigure, duration);
+      return;
+    }
+
+    previous.forEach((figure) => figure.remove());
+    nextFigure.classList.add("is-shown");
+  }
+
+  /**
+   * Fades the old full-layer figure out before fading the new one in.
+   *
+   * @private
+   * @param {HTMLElement[]} previous - Figures currently visible.
+   * @param {HTMLElement} nextFigure - Newly decoded figure.
+   * @param {number} duration - Total transition duration in milliseconds.
+   * @returns {void}
+   */
+  _replaceFigureWithDip(previous, nextFigure, duration) {
+    const phaseDuration = Math.max(duration / 2, 1);
+    nextFigure.style.setProperty("--sprite-duration", `${phaseDuration}ms`);
+    previous.forEach((figure) => {
+      figure.style.setProperty("--sprite-duration", `${phaseDuration}ms`);
+      figure.classList.add("is-replacing-out");
+    });
+    window.setTimeout(() => {
+      previous.forEach((figure) => figure.remove());
+      requestAnimationFrame(() => nextFigure.classList.add("is-shown"));
+    }, phaseDuration);
+  }
+
+  /**
+   * Collapses the old full-layer figure horizontally, swaps it, then opens the
+   * new figure from the same zero-width pose.
+   *
+   * @private
+   * @param {HTMLElement[]} previous - Figures currently visible.
+   * @param {HTMLElement} nextFigure - Newly decoded figure.
+   * @param {number} duration - Total transition duration in milliseconds.
+   * @returns {void}
+   */
+  _replaceFigureWithFlip(previous, nextFigure, duration) {
+    const phaseDuration = Math.max(duration / 2, 1);
+    nextFigure.style.setProperty("--sprite-duration", `${phaseDuration}ms`);
+    nextFigure.classList.add("is-flipping-in");
+    previous.forEach((figure) => {
+      figure.style.setProperty("--sprite-duration", `${phaseDuration}ms`);
+      figure.classList.add("is-flipping-out");
+    });
+    window.setTimeout(() => {
+      previous.forEach((figure) => figure.remove());
+      requestAnimationFrame(() => {
+        nextFigure.classList.add("is-shown");
+        nextFigure.classList.remove("is-flipping-in");
+      });
+    }, phaseDuration);
   }
 
   /**
@@ -784,10 +902,10 @@ export class IrlRenderer {
     });
   }
 
-  // ---- Choices (center-screen VN menu, same as streaming) ----
+  // ---- Choices (IRL gradient-band menu) ----
 
   /**
-   * Shows the center-screen choice menu.
+   * Shows the IRL choice menu as a centered gradient band.
    *
    * @param {object} choiceCommand - Choice command.
    * @param {object} options - { onSelect }.
@@ -795,28 +913,7 @@ export class IrlRenderer {
    */
   showChoice(choiceCommand, { onSelect }) {
     this.clearChoices();
-    const overlay = document.createElement("div");
-    overlay.className = "vn-choice-overlay";
-    const menu = document.createElement("div");
-    menu.className = "vn-choice-menu";
-    if (choiceCommand.prompt) {
-      const prompt = document.createElement("div");
-      prompt.className = "vn-choice-prompt";
-      prompt.textContent = choiceCommand.prompt;
-      menu.append(prompt);
-    }
-    for (const option of choiceCommand.options) {
-      const button = document.createElement("button");
-      button.className = "vn-choice-option";
-      button.type = "button";
-      button.textContent = option.text;
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        onSelect(option);
-      });
-      menu.append(button);
-    }
-    overlay.append(menu);
+    const overlay = createChoiceBand(choiceCommand, onSelect);
     this.appRoot.append(overlay);
     this.choiceOverlay = overlay;
   }

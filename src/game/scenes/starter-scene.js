@@ -11,4 +11,3 @@ export default scene({
     transition("Restart", "starter_scene")
   ]
 });
-

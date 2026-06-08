@@ -1,4 +1,5 @@
 import { STREAMING_SURFACE } from "../../engine/surface-modules.js";
+import { createChoiceBand } from "../choice-band.js";
 
 const CHAT_JITTER_MIN = 130;
 const CHAT_JITTER_MAX = 520;
@@ -24,17 +25,18 @@ function readableTextColor(hex) {
  * @returns {string} HSL color string.
  */
 function chatColor(name) {
+  const safeName = String(name || "viewer");
   let hash = 0;
-  for (let i = 0; i < name.length; i += 1) {
-    hash = (hash * 31 + name.charCodeAt(i)) % 360;
+  for (let i = 0; i < safeName.length; i += 1) {
+    hash = (hash * 31 + safeName.charCodeAt(i)) % 360;
   }
   return `hsl(${hash}, 62%, 70%)`;
 }
 
 /**
- * Renders the streaming surface: a flat laptop seated on the IRL background,
- * showing a stream site (window + chat), with the shared bottom dialogue box
- * and a center-screen VN choice menu.
+ * Renders the streaming surface as a restrained browser-like stream panel over
+ * the IRL background. Dialogue comes from the shared compositor box, while
+ * choices use the same in-world decision band as IRL scenes.
  */
 export class StreamingRenderer {
   static contract = {
@@ -94,31 +96,33 @@ export class StreamingRenderer {
     this.surface = document.createElement("div");
     this.surface.className = "stream-shell";
     this.surface.innerHTML = `
-      <div class="laptop">
-        <div class="laptop-cam" aria-hidden="true"></div>
-        <div class="stream-site">
-          <header class="stream-bar">
-            <div class="stream-ch-avatar" aria-hidden="true">M</div>
-            <div class="stream-bar-meta">
-              <div class="stream-title">offline</div>
-              <div class="stream-ch-name">streamer</div>
-            </div>
-            <div class="stream-status">
-              <span class="stream-pill is-offline">OFFLINE</span>
-              <span class="stream-viewers" hidden><span class="dot"></span><span class="vcount">0</span></span>
-            </div>
-          </header>
-          <div class="stream-body">
-            <div class="stream-window is-offline">
-              <div class="stream-window-inner"><span>offline</span></div>
-            </div>
-            <aside class="stream-chat">
-              <header>Stream chat</header>
-              <div class="stream-chat-log" aria-live="polite"></div>
-            </aside>
+      <div class="stream-site" role="region" aria-label="Streaming website">
+        <header class="stream-browser-bar" aria-hidden="true">
+          <span class="stream-browser-dot"></span>
+          <span class="stream-browser-dot"></span>
+          <span class="stream-browser-dot"></span>
+          <span class="stream-browser-address">stream.local/channel</span>
+        </header>
+        <header class="stream-bar">
+          <div class="stream-ch-avatar" aria-hidden="true">M</div>
+          <div class="stream-bar-meta">
+            <div class="stream-title">offline</div>
+            <div class="stream-ch-name">streamer</div>
           </div>
+          <div class="stream-status">
+            <span class="stream-pill is-offline">OFFLINE</span>
+            <span class="stream-viewers" hidden><span class="dot"></span><span class="vcount">0</span></span>
+          </div>
+        </header>
+        <div class="stream-body">
+          <div class="stream-window is-offline">
+            <div class="stream-window-inner"><span>offline</span></div>
+          </div>
+          <aside class="stream-chat">
+            <header>Stream chat</header>
+            <div class="stream-chat-log" aria-live="polite"></div>
+          </aside>
         </div>
-        <div class="laptop-deck" aria-hidden="true"></div>
       </div>
     `;
     this.appRoot.append(this.surface);
@@ -287,17 +291,17 @@ export class StreamingRenderer {
    * @param {object} message - { id, message } chat item.
    * @returns {void}
    */
-  renderChatMessage(message) {
+  renderChatMessage(message = {}) {
     const row = document.createElement("div");
     row.className = "chat-row";
-    const name = message.id;
+    const name = message.id ?? message.name ?? "viewer";
     const span = document.createElement("span");
     span.className = "chat-name";
     span.textContent = name;
     span.style.color = message.color ?? chatColor(name);
     const body = document.createElement("span");
     body.className = "chat-text";
-    body.textContent = message.message;
+    body.textContent = message.message ?? message.text ?? "";
     row.append(span, body);
     this.chatLog.append(row);
     this.chatLog.scrollTop = this.chatLog.scrollHeight;
@@ -428,22 +432,7 @@ export class StreamingRenderer {
    */
   showChoice(choiceCommand, { onSelect }) {
     this.clearChoices();
-    const overlay = document.createElement("div");
-    overlay.className = "vn-choice-overlay";
-    const menu = document.createElement("div");
-    menu.className = "vn-choice-menu";
-    for (const option of choiceCommand.options) {
-      const button = document.createElement("button");
-      button.className = "vn-choice-option";
-      button.type = "button";
-      button.textContent = option.text;
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        onSelect(option);
-      });
-      menu.append(button);
-    }
-    overlay.append(menu);
+    const overlay = createChoiceBand(choiceCommand, onSelect);
     this.appRoot.append(overlay);
     this.choiceOverlay = overlay;
   }

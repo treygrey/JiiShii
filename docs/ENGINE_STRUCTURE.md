@@ -157,6 +157,13 @@ valid surface module definition.
 If a command mutates module state, give it both `run` and `instant` handlers.
 Live play and rollback/load reconstruction must apply the same state mutation.
 
+## Adding Sprite Transitions
+
+IRL sprite transitions use a small declarative registry. Built-ins live in
+`src/engine/irl-stage-direction.js`; game-specific names are registered from
+`src/game/sprite-animations.js` before scene validation. See
+`docs/SPRITE_COOKBOOK.md` for the author-facing defaults and extension recipe.
+
 ## Single Source Of Truth
 
 `src/engine/command-meta.js` combines base command metadata and surface module

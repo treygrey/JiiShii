@@ -24,11 +24,13 @@ import {
   stopMusic,
   audioScene,
   sound,
+  stopSound,
   voice,
   pause,
   flash,
   shake,
   say,
+  choice,
   line,
   lineBlock,
   narrate,
@@ -41,7 +43,12 @@ import {
   streamPost,
   streamSystem,
   streamTitle,
-  streamWindow
+  streamWindow,
+  saveGalleryImage,
+  setWallpaper,
+  socialFollow,
+  socialPost,
+  condition
 } from "./commands.js";
 import { createInitialState } from "./state.js";
 import { SceneRunner } from "./runner.js";
@@ -65,14 +72,20 @@ function fakeRenderer(surface, commands, projections = []) {
     renderSpriteState: vi.fn(),
     renderTextingState: vi.fn(),
     renderStreamingState: vi.fn(),
+    renderPhoneHomeState: vi.fn(),
+    renderGalleryState: vi.fn(),
+    renderSocialState: vi.fn(),
     clearChoices: vi.fn(),
     setExitTransition: vi.fn(),
     setImageExitTransition: vi.fn(),
     setThread: vi.fn(),
     showTextBlock: vi.fn(),
     renderTextBlockInstant: vi.fn(),
+    showThreadNotification: vi.fn(),
+    showPhoneToast: vi.fn(),
     showLineBlock: vi.fn(),
     renderLineBlockInstant: vi.fn(),
+    showChoice: vi.fn(),
     setStreamLayout: vi.fn(),
     setStreamTitle: vi.fn(),
     setStreamWindow: vi.fn(),
@@ -117,7 +130,10 @@ function fakeRenderers() {
       "streamPost",
       "choice",
       "transition"
-    ], ["renderStreamingState"])
+    ], ["renderStreamingState"]),
+    phone_home: fakeRenderer("phone_home", ["choice", "transition"], ["renderPhoneHomeState"]),
+    gallery: fakeRenderer("gallery", ["choice", "transition"], ["renderGalleryState"]),
+    social: fakeRenderer("social", ["choice", "transition"], ["renderSocialState"])
   };
 }
 
@@ -145,10 +161,11 @@ function fakeAudio() {
     stopMusic: vi.fn(),
     playAmbience: vi.fn(),
     stopAmbience: vi.fn(),
-  playSound: vi.fn(),
-  playVoice: vi.fn(),
-  stopTransient: vi.fn(),
-  stopAll: vi.fn()
+    playSound: vi.fn(),
+    stopSound: vi.fn(),
+    playVoice: vi.fn(),
+    stopTransient: vi.fn(),
+    stopAll: vi.fn()
   };
 }
 
@@ -275,6 +292,317 @@ describe("SceneRunner surface stack", () => {
     expect(runner.state.currentSurface).toBe("streaming");
     expect(renderers.texting.unmount).toHaveBeenCalledOnce();
     expect(compositor.unregisterLayer).toHaveBeenCalledWith("texting");
+  });
+
+  it("opens phone Home over the current story surface and returns with the phone button", () => {
+    const { runner, renderers } = makeRunner([stage("irl")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.openPhoneApp("home");
+
+    expect(runner.surfaceStack).toEqual(["irl", "phone_home"]);
+    expect(runner.state.currentSurface).toBe("phone_home");
+    expect(renderers.irl.unmount).not.toHaveBeenCalled();
+
+    runner.togglePhone();
+
+    expect(runner.surfaceStack).toEqual(["irl"]);
+    expect(runner.state.currentSurface).toBe("irl");
+    expect(renderers.phone_home.unmount).toHaveBeenCalledOnce();
+  });
+
+  it("treats texting as a paused story surface when Home opens from a texting scene", () => {
+    const { runner } = makeRunner([stage("texting")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.openPhoneApp("home");
+
+    expect(runner.surfaceStack).toEqual(["texting", "phone_home"]);
+
+    runner.openPhoneApp("texting");
+
+    expect(runner.surfaceStack).toEqual(["texting"]);
+    expect(runner.state.currentSurface).toBe("texting");
+  });
+
+  it("shows the inbox only when Messages opens from phone navigation", () => {
+    const { runner } = makeRunner([stage("streaming"), open("texting")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting"]);
+    expect(runner.isTextingInboxMode()).toBe(false);
+
+    runner.popSurface();
+    runner.openPhoneApp("home");
+    runner.openPhoneApp("texting");
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting"]);
+    expect(runner.isTextingInboxMode()).toBe(true);
+  });
+
+  it("marks Messages as a phone app before its first render projection", () => {
+    const renderers = fakeRenderers();
+    const { runner } = makeRunner([stage("streaming")], { renderers });
+
+    runner.executeCommand(runner.scene.script[0]);
+    renderers.texting.renderTextingState.mockClear();
+    renderers.texting.renderTextingState.mockImplementation(() => {
+      expect(runner.isTextingInboxMode()).toBe(true);
+    });
+
+    runner.openPhoneApp("texting");
+
+    expect(renderers.texting.renderTextingState).toHaveBeenCalled();
+    expect(runner.isTextingInboxMode()).toBe(true);
+  });
+
+  it("allows story advancement while authored texting is layered over another story surface", () => {
+    const { runner, compositor } = makeRunner([stage("streaming"), open("texting")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+    runner.isWaitingForPlayer = true;
+    runner.advance();
+
+    expect(runner.isPhoneOpen()).toBe(false);
+    expect(compositor.completeNarrationReveal).toHaveBeenCalledOnce();
+  });
+
+  it("opens Home over story texting without clearing the blocked text choice", () => {
+    const { runner, renderers } = makeRunner([
+      stage("streaming"),
+      open("texting"),
+      choice([
+        { text: "I'm here.", goto: "here" },
+        { text: "Perceiving gently.", goto: "gentle" }
+      ])
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+    runner.executeCommand(runner.scene.script[2]);
+
+    expect(runner.isStoryTextingActive()).toBe(true);
+    expect(runner.blockingInput).toBe(true);
+    expect(renderers.texting.showChoice).toHaveBeenCalledOnce();
+    const textProjectionCount = renderers.texting.renderTextingState.mock.calls.length;
+
+    runner.togglePhone();
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting", "phone_home"]);
+    expect(runner.state.currentSurface).toBe("phone_home");
+    expect(runner.isPhoneOpen()).toBe(true);
+    expect(runner.blockingInput).toBe(true);
+    expect(renderers.texting.clearChoices).not.toHaveBeenCalled();
+    expect(renderers.texting.renderTextingState).toHaveBeenCalledTimes(textProjectionCount);
+    expect(renderers.phone_home.mount).toHaveBeenCalledOnce();
+
+    runner.togglePhone();
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting"]);
+    expect(runner.state.currentSurface).toBe("texting");
+    expect(runner.isStoryTextingActive()).toBe(true);
+    expect(runner.blockingInput).toBe(true);
+  });
+
+  it("opens Home over story texting and returns to the same blocked text choice", () => {
+    const { runner, renderers } = makeRunner([
+      stage("streaming"),
+      open("texting"),
+      choice([
+        { text: "I'm here.", goto: "here" },
+        { text: "Perceiving gently.", goto: "gentle" }
+      ])
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+    runner.executeCommand(runner.scene.script[2]);
+    const textProjectionCount = renderers.texting.renderTextingState.mock.calls.length;
+
+    runner.openPhoneApp("home");
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting", "phone_home"]);
+    expect(runner.isPhoneOpen()).toBe(true);
+    expect(runner.blockingInput).toBe(true);
+    expect(renderers.texting.renderTextingState).toHaveBeenCalledTimes(textProjectionCount);
+
+    runner.openPhoneApp("texting");
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting"]);
+    expect(runner.isStoryTextingActive()).toBe(true);
+    expect(runner.blockingInput).toBe(true);
+    expect(renderers.texting.clearChoices).not.toHaveBeenCalled();
+  });
+
+  it("returns from phone Home to the authored text thread instead of the underlying story surface", () => {
+    const { runner } = makeRunner([stage("streaming"), open("texting")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+    runner.openPhoneApp("home");
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting", "phone_home"]);
+
+    runner.togglePhone();
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting"]);
+    expect(runner.state.currentSurface).toBe("texting");
+    expect(runner.isPhoneOpen()).toBe(false);
+  });
+
+  it("creates a conversation when a text arrives without an explicit thread command", () => {
+    const { runner, renderers } = makeRunner([
+      stage("streaming"),
+      open("texting"),
+      say("alex", "first message arrived during the stream")
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+    runner.executeCommand(runner.scene.script[2]);
+
+    expect(runner.state.visuals.texting.currentThreadId).toBe("alex");
+    expect(runner.state.visuals.texting.threads.alex).toMatchObject({
+      contact: expect.objectContaining({ id: "alex", name: "alex" }),
+      messages: [expect.objectContaining({ id: "alex", message: "first message arrived during the stream" })]
+    });
+    expect(renderers.texting.setThread).toHaveBeenCalledWith(expect.objectContaining({ id: "alex" }));
+  });
+
+  it("switches between phone apps without discarding the paused story surface", () => {
+    const { runner, renderers } = makeRunner([stage("streaming")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.openPhoneApp("home");
+    runner.openPhoneApp("social");
+
+    expect(runner.surfaceStack).toEqual(["streaming", "social"]);
+    expect(renderers.streaming.unmount).not.toHaveBeenCalled();
+    expect(renderers.phone_home.unmount).toHaveBeenCalledOnce();
+    expect(renderers.social.mount).toHaveBeenCalledOnce();
+
+    runner.togglePhone();
+
+    expect(runner.surfaceStack).toEqual(["streaming"]);
+    expect(runner.state.currentSurface).toBe("streaming");
+  });
+
+  it("adds received text notifications to the conversation list as actionable rows", () => {
+    const alexScene = scene({
+      id: "alex_scene",
+      contact: { id: "alex", name: "Alex", avatar: "A" },
+      script: [
+        stage("texting"),
+        thread("alex"),
+        say("alex", "Are you there?")
+      ]
+    });
+    const testScene = scene({
+      id: "runner_test_scene",
+      cast: ["riley", "alex"],
+      script: [
+        stage("texting"),
+        thread("riley"),
+        say("riley", "Hi."),
+        transition("Alex", "alex_scene")
+      ]
+    });
+    const renderers = fakeRenderers();
+    const runner = new SceneRunner({
+      initialScene: testScene,
+      initialState: createInitialState(),
+      renderers,
+      compositor: fakeCompositor(),
+      registry: {
+        runner_test_scene: testScene,
+        alex_scene: alexScene
+      },
+      audio: fakeAudio()
+    });
+
+    runner.start();
+    renderers.texting.showTextBlock.mock.calls[0][1].onComplete();
+    runner.advance();
+
+    expect(runner.state.visuals.texting.threads.alex).toMatchObject({
+      contact: expect.objectContaining({ id: "alex", name: "Alex" }),
+      preview: "Are you there?",
+      pendingSceneId: "alex_scene",
+      unread: true
+    });
+    expect(renderers.texting.showThreadNotification).toHaveBeenCalledOnce();
+
+    expect(runner.openTextThread("alex")).toBe(true);
+
+    expect(runner.scene.id).toBe("alex_scene");
+    expect(runner.state.visuals.texting.threads.riley).toMatchObject({
+      messages: [expect.objectContaining({ message: "Hi." })]
+    });
+    expect(runner.state.visuals.texting.threads.alex).toBeDefined();
+    expect(runner.state.visuals.texting.threads.alex.unread).toBe(false);
+  });
+
+  it("does not advance the story while a phone app is open", () => {
+    const { runner, compositor } = makeRunner([stage("irl")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.isWaitingForPlayer = true;
+    runner.openPhoneApp("home");
+    runner.advance();
+
+    expect(compositor.completeNarrationReveal).not.toHaveBeenCalled();
+    expect(runner.isWaitingForPlayer).toBe(true);
+    expect(runner.surfaceStack).toEqual(["irl", "phone_home"]);
+  });
+
+  it("keeps story paused when Messages is opened as a phone app over a non-texting stage", () => {
+    const { runner, compositor } = makeRunner([stage("streaming")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.openPhoneApp("texting");
+    runner.isWaitingForPlayer = true;
+    runner.advance();
+
+    expect(runner.isPhoneOpen()).toBe(true);
+    expect(runner.isTextingInboxMode()).toBe(true);
+    expect(compositor.completeNarrationReveal).not.toHaveBeenCalled();
+
+    runner.togglePhone();
+    runner.advance();
+
+    expect(runner.surfaceStack).toEqual(["streaming"]);
+    expect(runner.isPhoneOpen()).toBe(false);
+    expect(compositor.completeNarrationReveal).toHaveBeenCalledOnce();
+  });
+
+  it("can reopen Messages as a phone app after authored texting closes", () => {
+    const { runner, renderers } = makeRunner([
+      stage("streaming"),
+      open("texting"),
+      say("alex", "first message arrived during the stream"),
+      close("texting")
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+    runner.executeCommand(runner.scene.script[2]);
+    renderers.texting.showTextBlock.mock.calls[0][1].onComplete();
+    runner.executeCommand(runner.scene.script[3]);
+
+    expect(runner.surfaceStack).toEqual(["streaming"]);
+    expect(runner.state.currentSurface).toBe("streaming");
+    expect(runner.state.phoneNavigationSurface).toBeNull();
+
+    runner.openPhoneApp("home");
+    runner.openPhoneApp("texting");
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting"]);
+    expect(runner.isPhoneOpen()).toBe(true);
+    expect(runner.isTextingInboxMode()).toBe(true);
+    expect(renderers.texting.renderTextingState).toHaveBeenCalled();
   });
 
   it("throws when close targets a layer that is not on top", () => {
@@ -438,9 +766,9 @@ describe("SceneRunner surface stack", () => {
   });
 
   it("throws clearly when staging an unregistered surface", () => {
-    const { runner } = makeRunner([stage("gallery")]);
+    const { runner } = makeRunner([stage("unknown_gallery")]);
 
-    expect(() => runner.executeCommand(runner.scene.script[0])).toThrow(/Unknown surface "gallery"/);
+    expect(() => runner.executeCommand(runner.scene.script[0])).toThrow(/Unknown surface "unknown_gallery"/);
   });
 
   it("clears mounted surfaces when a transition selects another scene", () => {
@@ -488,6 +816,7 @@ describe("SceneRunner surface stack", () => {
         id: "alex",
         outfit: "casual",
         expression: "happy",
+        body: "default",
         side: "left",
         flip: true,
         at: "left",
@@ -522,6 +851,7 @@ describe("SceneRunner surface stack", () => {
         id: "alex",
         outfit: "casual",
         expression: "happy",
+        body: "default",
         side: "left",
         flip: true,
         at: "left",
@@ -533,6 +863,38 @@ describe("SceneRunner surface stack", () => {
         layer: "characters"
       }
     ]);
+  });
+});
+
+describe("SceneRunner author conditions", () => {
+  it("uses human truthiness for flag checks", () => {
+    const { runner } = makeRunner([]);
+    runner.state.vars.metAlex = "0";
+
+    expect(runner.evaluateCondition(condition({ flag: "metAlex", then: "yes", else: "no" }))).toBe(false);
+
+    runner.state.vars.metAlex = "yes";
+    expect(runner.evaluateCondition(condition({ flag: "metAlex", then: "yes", else: "no" }))).toBe(true);
+  });
+
+  it("compares author values without requiring strict JavaScript equality", () => {
+    const { runner } = makeRunner([]);
+    runner.state.vars.emptyScore = "";
+    runner.state.vars.numericScore = "50";
+
+    expect(runner.evaluateCondition(condition({ var: "emptyScore", is: "0", then: "yes", else: "no" }))).toBe(true);
+    expect(runner.evaluateCondition(condition({ var: "numericScore", atLeast: 50, then: "yes", else: "no" }))).toBe(true);
+    expect(runner.evaluateCondition(condition({ var: "numericScore", moreThan: 50, then: "yes", else: "no" }))).toBe(false);
+  });
+
+  it("supports text-presence checks for author-facing conditions", () => {
+    const { runner } = makeRunner([]);
+    runner.state.vars.name = "  ";
+
+    expect(runner.evaluateCondition(condition({ var: "name", hasText: true, then: "yes", else: "no" }))).toBe(false);
+
+    runner.state.vars.name = "Alex";
+    expect(runner.evaluateCondition(condition({ var: "name", hasText: true, then: "yes", else: "no" }))).toBe(true);
   });
 });
 
@@ -577,6 +939,26 @@ describe("SceneRunner audio commands", () => {
     expect(runner.state.audio.music).toBeNull();
     expect(audio.playSound).toHaveBeenCalledWith({ type: "sound", id: "door_slam", volume: 0.7 });
     expect(audio.playVoice).toHaveBeenCalledWith({ type: "voice", id: "voice_line_001" });
+  });
+
+  it("stops named transient sounds without durable state", () => {
+    const { runner, audio } = makeRunner([
+      sound("phone_buzz", { as: "phone", loop: true, fadeIn: 100 }),
+      stopSound("phone", { fadeOut: 250 })
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+
+    expect(runner.state.audio.music).toBeNull();
+    expect(audio.playSound).toHaveBeenCalledWith({
+      type: "sound",
+      id: "phone_buzz",
+      as: "phone",
+      loop: true,
+      fadeIn: 100
+    });
+    expect(audio.stopSound).toHaveBeenCalledWith("phone", { fadeOut: 250 });
   });
 
   it("stores durable ambience state and calls the audio service", () => {
@@ -1347,6 +1729,82 @@ describe("SceneRunner rollback sprite state", () => {
       expect.anything(),
       expect.anything()
     );
+  });
+
+  it("loads phone wallpaper, gallery images, and social follows from snapshot saves", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      setWallpaper("tour_wallpaper"),
+      saveGalleryImage("tour_photo", "tour_gallery_selfie", { tags: ["Guide"] }),
+      socialPost("tour_post", { poster: "alex", text: "hello" }),
+      say("alex", "saved phone state")
+    ], {
+      storageKeys: {
+        save: "phone-snapshot-save",
+        autosave: "phone-snapshot-autosave",
+        slotPrefix: "phone-snapshot-slot-"
+      }
+    });
+
+    runner.start();
+    completeDialogue(compositor, 0);
+    runner.followSocialPoster("alex");
+    runner.save({ announce: true, slot: 1 });
+
+    runner.state.visuals.phone.wallpaperImage = null;
+    runner.state.visuals.gallery.images = [];
+    runner.state.visuals.social.posts = [];
+    runner.state.visuals.social.follows = {};
+
+    const result = runner.load({ slot: 1 });
+
+    expect(result).toEqual(expect.objectContaining({ ok: true, kind: "snapshot" }));
+    expect(runner.state.visuals.phone.wallpaperImage).toBe("tour_wallpaper");
+    expect(runner.state.visuals.gallery.images).toEqual([
+      expect.objectContaining({ id: "tour_photo", image: "tour_gallery_selfie", tags: ["Guide"] })
+    ]);
+    expect(runner.state.visuals.social.posts).toEqual([
+      expect.objectContaining({ id: "tour_post", poster: "alex" })
+    ]);
+    expect(runner.state.visuals.social.follows).toEqual({ alex: true });
+  });
+
+  it("loads updated phone app state from scene-entry autosaves", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      setWallpaper("tour_wallpaper"),
+      saveGalleryImage("tour_photo", "tour_gallery_selfie"),
+      socialPost("tour_post", { poster: "alex", text: "hello" }),
+      say("alex", "saved phone state")
+    ], {
+      storageKeys: {
+        save: "phone-entry-save",
+        autosave: "phone-entry-autosave",
+        slotPrefix: "phone-entry-slot-"
+      }
+    });
+
+    runner.start();
+    completeDialogue(compositor, 0);
+    runner.followSocialPoster("alex");
+    localStorage.setItem("phone-entry-save", localStorage.getItem("phone-entry-autosave"));
+
+    runner.state.visuals.phone.wallpaperImage = null;
+    runner.state.visuals.gallery.images = [];
+    runner.state.visuals.social.posts = [];
+    runner.state.visuals.social.follows = {};
+
+    const result = runner.load();
+
+    expect(result).toEqual(expect.objectContaining({ ok: true, kind: "scene-entry" }));
+    expect(runner.state.visuals.phone.wallpaperImage).toBe("tour_wallpaper");
+    expect(runner.state.visuals.gallery.images).toEqual([
+      expect.objectContaining({ id: "tour_photo", image: "tour_gallery_selfie" })
+    ]);
+    expect(runner.state.visuals.social.posts).toEqual([
+      expect.objectContaining({ id: "tour_post", poster: "alex" })
+    ]);
+    expect(runner.state.visuals.social.follows).toEqual({ alex: true });
   });
 
   it("handles corrupt saves without mutating the current runner state", () => {
