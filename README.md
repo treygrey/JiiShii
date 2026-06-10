@@ -79,6 +79,10 @@ npm run game:manifest # Regenerate loose-package manifest
 npm run build:app  # Build the Tauri desktop player
 ```
 
+## License
+
+JiiShii is released under the MIT License. See `LICENSE`.
+
 ## Documentation
 
 Start with:
