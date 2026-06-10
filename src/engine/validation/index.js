@@ -149,6 +149,7 @@ export function validateScenes(registry, options = {}) {
       setVars,
       globalIds,
       commandMeta,
+      surfaceRegistry,
       surfaceIds,
       phoneAppIds,
       resolveImage: options.resolveImage ?? NOOP_RESOLVE,
@@ -1079,13 +1080,18 @@ function validateSurfaces(scene, ctx) {
   let flaggedNoStage = false;
 
   const active = () => (layers.length ? layers[layers.length - 1] : base);
-  const validateSurfaceId = (id, commandName) => {
+  const validateSurfaceId = (id, commandName, { allowApp = false } = {}) => {
     if (typeof id !== "string" || id.trim().length === 0) {
       ctx.errors.push(`${where}: ${commandName}() needs a surface id.`);
       return false;
     }
     if (!ctx.surfaceIds.has(id)) {
       ctx.errors.push(`${where}: ${commandName}("${id}") uses an unknown surface.${didYouMean(id, [...ctx.surfaceIds])} Registered surfaces: ${[...ctx.surfaceIds].join(", ") || "(none)"}.`);
+      return false;
+    }
+    if (!allowApp && ctx.surfaceRegistry.get(id)?.kind === "app") {
+      const phoneTarget = id === "phone_home" ? "home" : id;
+      ctx.errors.push(`${where}: ${commandName}("${id}") targets phone app surface "${id}". Use openPhone("${phoneTarget}") instead.`);
       return false;
     }
     return true;
@@ -1118,7 +1124,7 @@ function validateSurfaces(scene, ctx) {
         }
         break;
       case "closeLayer": {
-        if (!validateSurfaceId(command.id, "close")) break;
+        if (!validateSurfaceId(command.id, "close", { allowApp: true })) break;
         const top = layers[layers.length - 1];
         if (top === command.id) {
           layers.pop();

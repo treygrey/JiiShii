@@ -16,6 +16,14 @@ describe("surface module harness", () => {
     const registry = createSurfaceRegistry();
 
     expect([...registry.keys()]).toEqual(["irl", "texting", "streaming", "phone_home", "gallery", "social"]);
+    expect(Object.fromEntries([...registry].map(([id, surface]) => [id, surface.kind]))).toEqual({
+      irl: "story",
+      texting: "story",
+      streaming: "story",
+      phone_home: "app",
+      gallery: "app",
+      social: "app"
+    });
   });
 
   it("exposes command metadata from surface modules", () => {
@@ -50,6 +58,7 @@ describe("surface module harness", () => {
 
     expect(gallerySurface).toMatchObject({
       id: "gallery",
+      kind: "story",
       renderer: {
         surface: "gallery",
         commands: ["choice", "transition"],
@@ -64,6 +73,38 @@ describe("surface module harness", () => {
         }
       }
     });
+  });
+
+  it("defines app-kind surface modules for phone navigation", () => {
+    const gallerySurface = defineSurfaceModule({
+      id: "gallery",
+      kind: "app",
+      phoneApp: { label: "Gallery" },
+      renderer: {
+        commands: ["choice", "transition"],
+        projections: ["renderGalleryState"]
+      }
+    });
+
+    expect(gallerySurface).toMatchObject({
+      id: "gallery",
+      kind: "app",
+      phoneApp: {
+        label: "Gallery",
+        icon: null
+      }
+    });
+  });
+
+  it("rejects unknown surface kinds", () => {
+    expect(() => defineSurfaceModule({
+      id: "gallery",
+      kind: "desktop",
+      renderer: {
+        commands: ["choice"],
+        projections: []
+      }
+    })).toThrow(/kind must be "story" or "app"/);
   });
 
   it("rejects duplicate surface ids", () => {

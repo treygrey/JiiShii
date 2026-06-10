@@ -641,6 +641,18 @@ describe("SceneRunner surface stack", () => {
     expect(runner.surfaceStack).toEqual(["irl", "phone_home"]);
   });
 
+  it("does not capture rollback snapshots while a phone app is topmost", () => {
+    const { runner } = makeRunner([stage("irl"), say("alex", "line")]);
+
+    runner.start();
+    const snapshotCount = runner.rollbackBuffer.length;
+    runner.openPhoneApp("home");
+    runner.captureBeatSnapshot();
+
+    expect(runner.isPhoneOpen()).toBe(true);
+    expect(runner.rollbackBuffer).toHaveLength(snapshotCount);
+  });
+
   it("keeps story paused when Messages is opened as a phone app over a non-texting stage", () => {
     const { runner, compositor } = makeRunner([stage("streaming")]);
 
@@ -852,6 +864,14 @@ describe("SceneRunner surface stack", () => {
     const { runner } = makeRunner([stage("unknown_gallery")]);
 
     expect(() => runner.executeCommand(runner.scene.script[0])).toThrow(/Unknown surface "unknown_gallery"/);
+  });
+
+  it("throws clearly when staging a phone app surface", () => {
+    const { runner } = makeRunner([stage("gallery")]);
+
+    expect(() => runner.executeCommand(runner.scene.script[0])).toThrow(
+      /Surface "gallery" is a phone app\. Use openPhone\("gallery"\) instead of staging it\./
+    );
   });
 
   it("clears mounted surfaces when a transition selects another scene", () => {

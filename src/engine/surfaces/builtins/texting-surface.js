@@ -34,6 +34,7 @@ import {
 
 export const TEXTING_SURFACE = defineSurfaceModule({
   id: "texting",
+  kind: "story",
   phoneApp: {
     label: "Messages",
     icon: "M"

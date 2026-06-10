@@ -34,6 +34,7 @@ import {
 
 export const IRL_SURFACE = defineSurfaceModule({
   id: "irl",
+  kind: "story",
   baseline: true,
   renderer: {
     surface: "irl",

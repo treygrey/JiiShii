@@ -1,6 +1,7 @@
 export const SHARED_RENDERER_COMMANDS = ["choice", "transition"];
 
 const SURFACE_ID_PATTERN = /^[a-z][a-z0-9_-]*$/;
+const SURFACE_KINDS = new Set(["story", "app"]);
 
 /**
  * Ensures a surface module has the author-facing shape the engine expects.
@@ -9,6 +10,7 @@ const SURFACE_ID_PATTERN = /^[a-z][a-z0-9_-]*$/;
  *
  * @param {object} moduleDefinition - Surface module definition.
  * @param {string} moduleDefinition.id - Stable surface id used by stage/open.
+ * @param {"story"|"app"} [moduleDefinition.kind] - Surface behavior category.
  * @param {boolean} [moduleDefinition.baseline] - True for the baseline VN surface.
  * @param {object} moduleDefinition.renderer - Renderer contract declaration.
  * @param {string} [moduleDefinition.renderer.surface] - Renderer surface id.
@@ -52,6 +54,7 @@ export function defineSurfaceModule(moduleDefinition) {
 
   return {
     id,
+    kind: normalizeSurfaceKind(id, moduleDefinition.kind),
     baseline: moduleDefinition.baseline === true,
     phoneApp: normalizePhoneAppMetadata(id, moduleDefinition.phoneApp),
     renderer: {
@@ -63,6 +66,21 @@ export function defineSurfaceModule(moduleDefinition) {
     state: normalizeStateLifecycle(id, moduleDefinition.state),
     handlers: normalizeCommandHandlers(id, moduleDefinition.handlers ?? {})
   };
+}
+
+/**
+ * Normalizes a surface kind declaration.
+ *
+ * @param {string} surfaceId - Surface id.
+ * @param {unknown} value - Candidate kind.
+ * @returns {"story"|"app"} Normalized surface kind.
+ */
+function normalizeSurfaceKind(surfaceId, value) {
+  const kind = value ?? "story";
+  if (!SURFACE_KINDS.has(kind)) {
+    throw new Error(`Surface module "${surfaceId}": kind must be "story" or "app".`);
+  }
+  return kind;
 }
 
 /**

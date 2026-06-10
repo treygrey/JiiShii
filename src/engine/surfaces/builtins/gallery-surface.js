@@ -34,6 +34,7 @@ import {
 
 export const GALLERY_SURFACE = defineSurfaceModule({
   id: "gallery",
+  kind: "app",
   phoneApp: {
     label: "Gallery",
     icon: "G"

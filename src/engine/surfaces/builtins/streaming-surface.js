@@ -34,6 +34,7 @@ import {
 
 export const STREAMING_SURFACE = defineSurfaceModule({
   id: "streaming",
+  kind: "story",
   renderer: {
     surface: "streaming",
     commands: [

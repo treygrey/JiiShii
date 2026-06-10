@@ -393,6 +393,23 @@ describe("validateScenes", () => {
     expect(result.warnings.some((message) => message.includes("galery"))).toBe(false);
   });
 
+  it("reports authored attempts to stage or open app-kind phone surfaces", () => {
+    const result = validateScenes(registryOf(scene({
+      id: "app_surface_stage_scene",
+      cast: ["me"],
+      script: [
+        stage("gallery"),
+        stage("irl"),
+        open("social"),
+        pushSurface("phone_home")
+      ]
+    })));
+
+    expectMessage(result.errors, 'stage("gallery") targets phone app surface "gallery". Use openPhone("gallery") instead.');
+    expectMessage(result.errors, 'open("social") targets phone app surface "social". Use openPhone("social") instead.');
+    expectMessage(result.errors, 'pushSurface("phone_home") targets phone app surface "phone_home". Use openPhone("home") instead.');
+  });
+
   it("reports layer stack mistakes", () => {
     const result = validateScenes(registryOf(
       scene({

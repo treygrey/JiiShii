@@ -34,6 +34,7 @@ import {
 
 export const SOCIAL_SURFACE = defineSurfaceModule({
   id: "social",
+  kind: "app",
   phoneApp: {
     label: "Social",
     icon: "S"

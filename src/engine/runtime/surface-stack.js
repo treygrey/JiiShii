@@ -29,6 +29,11 @@ export function setSurface(runner, surfaceId) {
     throw new Error(`Unknown surface "${surfaceId}". Register a surface module before staging it.`);
   }
 
+  if (runner.surfaceRegistry.get(surfaceId)?.kind === "app") {
+    const phoneTarget = surfaceId === "phone_home" ? "home" : surfaceId;
+    throw new Error(`Surface "${surfaceId}" is a phone app. Use openPhone("${phoneTarget}") instead of staging it.`);
+  }
+
   const next = runner.renderers[surfaceId];
 
   if (!next) {

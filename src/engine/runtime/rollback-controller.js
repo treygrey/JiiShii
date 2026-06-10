@@ -56,6 +56,11 @@ export function rollForward(runner) {
  * @returns {void}
  */
 export function captureBeatSnapshot(runner) {
+  const topSurface = runner.surfaceStack.at(-1) ?? runner.state.currentSurface;
+  if (runner.surfaceRegistry.get(topSurface)?.kind === "app") {
+    return;
+  }
+
   const snapshot = {
     sceneId: runner.state.currentSceneId,
     commandIndex: runner.activeBeatCommandIndex ?? runner.state.currentCommandIndex,

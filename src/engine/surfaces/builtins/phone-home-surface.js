@@ -34,6 +34,7 @@ import {
 
 export const PHONE_HOME_SURFACE = defineSurfaceModule({
   id: "phone_home",
+  kind: "app",
   renderer: {
     surface: "phone_home",
     commands: [...SHARED_RENDERER_COMMANDS],

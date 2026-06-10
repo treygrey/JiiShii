@@ -53,6 +53,11 @@ function applyGalleryImage(state, command) {
  */
 export const gallerySurface = defineSurfaceModule({
   id: "gallery",
+  kind: "app",
+  phoneApp: {
+    label: "Gallery",
+    icon: "G"
+  },
   renderer: {
     commands: ["galleryImage", "choice", "transition"],
     projections: ["renderGalleryState"]

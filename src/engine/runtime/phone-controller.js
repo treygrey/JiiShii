@@ -33,10 +33,10 @@ export function createPhoneAppMetadata(runner) {
  *
  * @param {object} runner - Scene runner instance.
  * @param {string|null} surfaceId - Surface id to inspect.
- * @returns {boolean} True for phone home or registered phone apps.
+ * @returns {boolean} True for app-kind surfaces.
  */
 export function isPhoneSurface(runner, surfaceId) {
-  return surfaceId === "phone_home" || Boolean(surfaceId && runner.phoneApps?.[surfaceId]);
+  return runner.surfaceRegistry.get(surfaceId)?.kind === "app";
 }
 
 /**
