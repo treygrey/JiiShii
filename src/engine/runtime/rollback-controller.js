@@ -105,6 +105,8 @@ export function captureBeatSnapshot(runner) {
 export function reconstructTo(runner, snap, { preservePersistentPhoneState = true } = {}) {
   runner.reconstructing = true;
   runner.activeBeatCommandIndex = null;
+  runner.pauseReady = false;
+  runner.clearPauseTimer();
   const preservedPhoneState = cloneSurfaceState(runner.state, runner.surfaceRegistry);
 
   runner.teardownMountedSurfaces();
@@ -218,21 +220,9 @@ export function replaySceneContextToCurrentCommand(runner) {
         runner.state.currentCommandIndex += 1;
         break;
       case "label":
-        runner.state.currentCommandIndex += 1;
-        break;
       case "setFlag":
-        runner.state.vars[command.key] = command.value;
-        runner.syncIrlSprites({ instant: true });
-        runner.state.currentCommandIndex += 1;
-        break;
       case "setVar":
-        applyVarMutations(runner.state.vars, { [command.key]: command.value });
-        runner.syncIrlSprites({ instant: true });
-        runner.state.currentCommandIndex += 1;
-        break;
       case "roll":
-        runner.state.vars[command.key] = rollInt(runner.state, command.min, command.max);
-        runner.syncIrlSprites({ instant: true });
         runner.state.currentCommandIndex += 1;
         break;
       case "narration":
@@ -412,7 +402,6 @@ import {
 } from "../audio-state.js";
 import { cloneHistoryState } from "../history-state.js";
 import { setSpriteFocus } from "../sprite-state.js";
-import { applyVarMutations, rollInt } from "../state.js";
 import { cloneSurfaceState, createSurfaceState } from "../surface-modules.js";
 import {
   appendStreamChat,

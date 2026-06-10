@@ -52,7 +52,8 @@ import {
   socialFollow,
   socialLike,
   socialPost,
-  condition
+  condition,
+  roll
 } from "./commands.js";
 import { createInitialState } from "./state.js";
 import { SceneRunner } from "./runner.js";
@@ -266,6 +267,7 @@ function comparableReplayState(runner) {
     currentSurface: runner.state.currentSurface,
     surfaceStack: runner.state.surfaceStack,
     vars: runner.state.vars,
+    rng: runner.state.rng,
     audio: runner.state.audio,
     sprites: runner.state.sprites,
     visuals: {
@@ -1731,6 +1733,44 @@ describe("SceneRunner rollback sprite state", () => {
     expect(runner.rollbackBuffer[0].commandIndex).toBe(runner.state.currentCommandIndex);
   });
 
+  it("does not double-apply relative variable mutations during rollback replay", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      set("gold", "+5"),
+      say("alex", "first"),
+      say("alex", "second")
+    ]);
+
+    runner.start();
+    expect(runner.state.vars.gold).toBe(5);
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+    expect(runner.state.vars.gold).toBe(5);
+
+    runner.rollBack();
+
+    expect(runner.state.vars.gold).toBe(5);
+  });
+
+  it("does not reroll random variables during rollback replay", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      roll("dice", 1, 1000000),
+      say("alex", "first"),
+      say("alex", "second")
+    ]);
+
+    runner.start();
+    const originalRoll = runner.state.vars.dice;
+
+    completeDialogue(compositor, 0);
+    runner.advance();
+    runner.rollBack();
+
+    expect(runner.state.vars.dice).toBe(originalRoll);
+  });
+
   it("steps backward through distinct readable lines instead of repeating the current line", () => {
     const { runner, compositor } = makeRunner([
       stage("irl"),
@@ -2535,7 +2575,8 @@ describe("SceneRunner rollback sprite state", () => {
       image("photo", "tour_gallery_selfie", { at: "right", scale: 0.75 }),
       music("quiet_theme"),
       ambience("room_tone"),
-      set("visited_room", true),
+      set("gold", "+5"),
+      roll("dice", 1, 1000000),
       move("alex", { at: "center", scale: 1.1 }),
       moveImage("photo", { alpha: 0.6 }),
       hide("alex"),
@@ -2548,6 +2589,8 @@ describe("SceneRunner rollback sprite state", () => {
 
     const replay = makeRunner(script);
     replay.runner.state.currentCommandIndex = live.runner.state.currentCommandIndex;
+    replay.runner.state.vars = structuredClone(live.runner.state.vars);
+    replay.runner.state.rng = live.runner.state.rng;
     replay.runner.replaySceneContextToCurrentCommand();
 
     expect(comparableReplayState(replay.runner)).toEqual(comparableReplayState(live.runner));

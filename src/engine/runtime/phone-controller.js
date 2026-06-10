@@ -123,10 +123,9 @@ export function getPhoneReturnSurface(runner) {
  *
  * @param {object} runner - Scene runner instance.
  * @param {string} app - App id.
- * @param {object} [options] - Navigation options.
  * @returns {void}
  */
-export function openPhoneApp(runner, app = "home", options = {}) {
+export function openPhoneApp(runner, app = "home") {
   const surfaceId = app === "home" ? "phone_home" : app;
   if (!runner.surfaceRegistry.has(surfaceId)) {
     return;
@@ -178,7 +177,7 @@ export function goBackPhoneApp(runner) {
     ? "home"
     : runner.isPhoneNavigationLayer(topSurface) ? topSurface : runner.state.visuals.phone.currentApp ?? "home";
   if (currentApp !== "home") {
-    runner.openPhoneApp("home", { fromHistory: true });
+    runner.openPhoneApp("home");
     return;
   }
   runner.returnToStorySurface();
@@ -206,7 +205,6 @@ export function togglePhone(runner) {
  */
 export function returnToStorySurface(runner) {
   const returnSurface = runner.getPhoneReturnSurface() ?? "texting";
-  runner.phoneAppHistory = [];
   while (runner.surfaceStack.length > 1 && runner.isPhoneNavigationLayer(runner.surfaceStack.at(-1))) {
     runner.popSurface();
   }

@@ -276,7 +276,6 @@ export class SceneRunner {
     this.globalCharacters = globalCharacters;
     this.phoneConfig = phoneConfig;
     this.storageKeys = normalizeStorageKeys(storageKeys);
-    this.phoneAppHistory = [];
     this.labels = this.createLabelIndex(initialScene.script);
     this.characters = this.buildCharacters(initialScene);
     this.state.visuals.phone = normalizePhoneState({
@@ -335,10 +334,12 @@ export class SceneRunner {
 
   /** Clears the rollback history (called when a scene begins fresh). */
   resetRollback() {
+    this.clearPauseTimer();
     this.rollbackBuffer = [];
     this.rollbackPos = -1;
     this.isRewound = false;
     this.activeBeatCommandIndex = null;
+    this.pauseReady = false;
   }
 
   /**
@@ -1400,12 +1401,12 @@ export class SceneRunner {
    * @param {string} app - App id, or "home".
    * @returns {void}
    */
-  openPhoneApp(app = "home", { fromHistory = false } = {}) {
-    openPhoneAppController(this, app, { fromHistory });
+  openPhoneApp(app = "home") {
+    openPhoneAppController(this, app);
   }
 
   /**
-   * Moves to the previous phone app, or closes the phone when history is empty.
+   * Moves phone navigation toward Home, then back to the story surface.
    *
    * @returns {void}
    */
