@@ -1,15 +1,16 @@
 # Engine Structure
 
-This project is a small surface-driven VN engine plus one game
-active game package.
+This project is a small surface-driven VN engine plus one bundled starter game
+package.
 
 ## Main Boundaries
 
-- `src/engine/` is engine code: runner, validation, state helpers, command
-  metadata, rollback, renderer contracts, content discovery, audio, and
-  compositor logic.
+- `src/engine/` is engine code. Public compatibility entrypoints still live at
+  the top level, while implementation now lives in responsibility folders:
+  `assets/`, `audio/`, `commands/`, `config/`, `content/`, `dom/`, `runtime/`,
+  `state/`, `surfaces/`, and `validation/`.
 - `src/renderers/` contains built-in surface renderers.
-- `src/game/` is the selected active game package.
+- `src/game/` is the bundled starter package used by web/Vite builds.
 - `src/game/scenes/` is auto-discovered scene content.
 - `src/game/surface-modules/` is auto-discovered optional surface module
   content.
@@ -18,10 +19,32 @@ active game package.
 - `templates/game-package/` is the starter package shape for a new game.
 - `docs/` explains how authors and module builders use the engine.
 
+For the public-engine/private-game workflow, see
+`docs/GAME_PACKAGE_GUIDE.md`.
+
+## Runtime Runner Split
+
+`src/engine/runner.js` is a compatibility entrypoint that re-exports
+`runtime/scene-runner.js`. The runner owns live state and dependencies, while
+the main behavior groups live in focused runtime modules:
+
+- `command-executor.js`: command loop and command dispatch
+- `save-controller.js`: save envelopes and load behavior
+- `rollback-controller.js`: rollback snapshots, reconstruction, and replay
+- `texting-controller.js`: text thread contacts, unread/read policy, and inbox
+  actions
+- `scene-loader.js`: label indexes, character resolution, and scene switching
+- `beat-presenter.js`: narration, dialogue, choices, text blocks, stream beats,
+  and scene endings
+- `projection.js`: renderer/audio/background synchronization
+- `surface-stack.js`: active surface stack lifecycle
+- `phone-controller.js`: phone app navigation and phone-owned player actions
+
 ## Author Vocabulary
 
-Scenes should import from `src/game/vn.js`, not directly from
-`src/engine/commands.js`. `vn.js` is the stable author-facing surface.
+Scenes should import from their package-local `vn.js`, not directly from
+`src/engine/commands.js`. `vn.js` is the stable author-facing surface in both
+bundled and loose package modes.
 
 Internally, `stage("irl")`, `stage("texting")`, and `stage("streaming")`
 activate surfaces. "Stage" is script terminology. "Surface" is engine
@@ -87,8 +110,8 @@ One file may export one scene or a scene pack array:
 
 ```js
 export const chapterOne = [
-  scene({ id: "scene_010_intro", script: [stage("irl"), say("...")] }),
-  scene({ id: "scene_011_followup", script: [stage("irl"), say("...")] })
+  scene({ id: "scene-010-intro", script: [stage("irl"), say("...")] }),
+  scene({ id: "scene-011-followup", script: [stage("irl"), say("...")] })
 ];
 ```
 
@@ -97,7 +120,9 @@ exports outside the array are fine. Use
 `src/game/scenes/chapter-pack.example.js` as a copyable starter for chapter
 or route packs.
 
-Set the starting scene in `src/game/game.config.js` with `firstSceneId`.
+Set the starting scene in `src/game/game.config.js` with `firstSceneId`. The
+value must match a scene id exactly; the engine does not convert hyphens to
+underscores for scene ids.
 
 ## Adding A Surface Module
 
@@ -110,11 +135,14 @@ A surface module declares:
 - command handlers
 - an optional renderer constructor export
 
-Use `defineSurfaceModule(...)` from `src/engine/surface-modules.js`. The
-registry validates module shape, renderer contracts, and command metadata.
+Use `defineSurfaceModule(...)` from `src/engine/surface-modules.js` or
+`src/engine/surfaces/define-surface-module.js`. The registry validates module
+shape, renderer contracts, and command metadata.
 
-New modules should follow the same pattern as the built-ins: runner-owned state
-first, renderer projection second. That keeps rollback/load deterministic.
+New modules should follow the same pattern as the built-ins in
+`src/engine/surfaces/builtins/`: runner-owned state first, renderer projection
+second. That keeps rollback/load deterministic. Built-ins and custom modules
+both register through the same surface registry path.
 
 For a copyable starting point, see:
 
@@ -159,8 +187,9 @@ Live play and rollback/load reconstruction must apply the same state mutation.
 
 ## Adding Sprite Transitions
 
-IRL sprite transitions use a small declarative registry. Built-ins live in
-`src/engine/irl-stage-direction.js`; game-specific names are registered from
+IRL sprite transitions use a small declarative registry. The compatibility
+entrypoint is `src/engine/irl-stage-direction.js`; implementation lives in
+`src/engine/dom/irl-stage-direction.js`. Game-specific names are registered from
 `src/game/sprite-animations.js` before scene validation. See
 `docs/SPRITE_COOKBOOK.md` for the author-facing defaults and extension recipe.
 
@@ -168,7 +197,9 @@ IRL sprite transitions use a small declarative registry. Built-ins live in
 
 `src/engine/command-meta.js` combines base command metadata and surface module
 metadata. Validator, runner, and renderer contracts all read from the same
-semantic table.
+semantic table. Author command helpers are split by family under
+`src/engine/commands/`, with `src/engine/commands.js` kept as the stable public
+barrel.
 
 When adding a command, make sure it is known to one of these:
 
@@ -177,7 +208,8 @@ When adding a command, make sure it is known to one of these:
 
 ## Validation
 
-The validator checks:
+The validator entrypoint is still `src/engine/validator.js`, with implementation
+under `src/engine/validation/`. It checks:
 
 - render before any `stage()`
 - wrong-surface commands

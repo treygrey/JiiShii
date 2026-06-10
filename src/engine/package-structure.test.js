@@ -1,13 +1,21 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { IMAGE_ASSETS } from "../game/assets.js";
 import { AUDIO_ASSETS } from "../game/audio.js";
-import { GAME_CONFIG } from "../game/game.config.js";
-import { SCENES } from "../game/scenes/index.js";
+import { installAuthorApiGlobal } from "../player/author-api.js";
 import { OUT_FILE, SPRITES_DIR } from "../../scripts/generate-sprite-manifest.mjs";
+import { OUT_FILE as ASSET_SUGGESTIONS_FILE } from "../../scripts/generate-asset-suggestions.mjs";
 
 const PROJECT_ROOT = join(import.meta.dirname, "..", "..");
+let GAME_CONFIG = null;
+let SCENES = null;
+
+beforeAll(async () => {
+  installAuthorApiGlobal();
+  GAME_CONFIG = (await import("../game/game.config.js")).GAME_CONFIG;
+  SCENES = (await import("../game/scenes/index.js")).SCENES;
+});
 
 /**
  * Recursively lists JavaScript source files under a directory.
@@ -41,8 +49,10 @@ function slash(path) {
 
 describe("game package structure", () => {
   it("discovers the active game package scenes from src/game", () => {
+    expect(GAME_CONFIG.firstSceneId).toBe("scene-phone-tour");
     expect(SCENES[GAME_CONFIG.firstSceneId]).toBeTruthy();
-    expect(SCENES["scene_example_basic"]).toBeUndefined();
+    expect(SCENES.scene_phone_tour).toBeUndefined();
+    expect(SCENES["scene-example-basic"]).toBeUndefined();
   });
 
   it("builds image and audio registries from src/game/assets", () => {
@@ -53,6 +63,7 @@ describe("game package structure", () => {
   it("points sprite manifest generation at the active game package", () => {
     expect(slash(relative(PROJECT_ROOT, SPRITES_DIR))).toBe("src/game/assets/sprites");
     expect(slash(relative(PROJECT_ROOT, OUT_FILE))).toBe("src/game/sprite-manifest.json");
+    expect(slash(relative(PROJECT_ROOT, ASSET_SUGGESTIONS_FILE))).toBe("src/game/asset-suggestions.json");
   });
 
   it("keeps engine modules from importing story package files directly", () => {
@@ -70,6 +81,7 @@ describe("game package structure", () => {
     expect(existsSync(join(templateRoot, "vn.js"))).toBe(true);
     expect(existsSync(join(templateRoot, "sprite-animations.js"))).toBe(true);
     expect(existsSync(join(templateRoot, "sprite-manifest.json"))).toBe(true);
+    expect(existsSync(join(templateRoot, "asset-suggestions.json"))).toBe(true);
     expect(readFileSync(join(templateRoot, "scenes", "starter-scene.js"), "utf8")).toContain(
       'from "../vn.js"'
     );

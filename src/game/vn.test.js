@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import * as commands from "../engine/commands.js";
-import * as vn from "./vn.js";
+import { installAuthorApiGlobal } from "../player/author-api.js";
 
 describe("writer vocabulary exports", () => {
-  it("re-exports every command helper from the author-facing vn module", () => {
+  it("re-exports every command helper from the author-facing vn module", async () => {
+    installAuthorApiGlobal();
+    const vn = await import("./vn.js");
     const commandHelpers = Object.entries(commands)
       .filter(([, value]) => typeof value === "function")
       .map(([name]) => name)
@@ -15,7 +17,9 @@ describe("writer vocabulary exports", () => {
     }
   });
 
-  it("exports markup registration for author-defined inline text macros", () => {
+  it("exports markup registration for author-defined inline text macros", async () => {
+    installAuthorApiGlobal();
+    const vn = await import("./vn.js");
     expect(vn.registerMarkup).toEqual(expect.any(Function));
   });
 });

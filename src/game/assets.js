@@ -2,7 +2,7 @@ import {
   buildAssetDiscovery,
   buildAssetRegistry,
   imageIdsFromPath,
-  normalizeAssetId
+  assetIdFromPathText
 } from "../engine/asset-discovery.js";
 
 const IMAGE_MODULES = import.meta.glob(
@@ -50,7 +50,7 @@ export function buildImageRegistry(modules, aliases = {}) {
   });
 }
 
-export { imageIdsFromPath, normalizeAssetId as normalizeImageId };
+export { imageIdsFromPath, assetIdFromPathText as imageIdFromPathText };
 
 export const IMAGE_ASSETS = IMAGE_DISCOVERY.assets;
 

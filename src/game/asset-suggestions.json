@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "images": {
+    "ids": [
+      "img/phone_tour/tour_gallery_group",
+      "img/phone_tour/tour_gallery_selfie",
+      "img/phone_tour/tour_gallery_wallpaper",
+      "img/phone_tour/tour_room_day",
+      "img/phone_tour/tour_social_post",
+      "img/phone_tour/tour_stream_preview",
+      "phone_tour/tour_gallery_group",
+      "phone_tour/tour_gallery_selfie",
+      "phone_tour/tour_gallery_wallpaper",
+      "phone_tour/tour_room_day",
+      "phone_tour/tour_social_post",
+      "phone_tour/tour_stream_preview",
+      "tour_gallery_group",
+      "tour_gallery_selfie",
+      "tour_gallery_wallpaper",
+      "tour_room_day",
+      "tour_social_post",
+      "tour_stream_preview"
+    ],
+    "ambiguities": {}
+  },
+  "audio": {
+    "ids": [],
+    "ambiguities": {}
+  },
+  "sprites": {}
+}

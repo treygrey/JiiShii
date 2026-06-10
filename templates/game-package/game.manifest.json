@@ -1,0 +1,60 @@
+{
+  "schema": 1,
+  "mode": "dev",
+  "gameId": "jiishii-game",
+  "engine": {
+    "minVersion": "0.1.0-alpha.0"
+  },
+  "entry": {
+    "config": "game.config.js",
+    "characters": null,
+    "spriteAnimations": "sprite-animations.js",
+    "spriteManifest": "sprite-manifest.json",
+    "scenes": [
+      "scenes/starter-scene.js"
+    ],
+    "surfaceModules": [],
+    "spriteRecipes": []
+  },
+  "files": {
+    "asset-suggestions.json": {
+      "kind": "file",
+      "size": 153,
+      "mtime": 1780946859849
+    },
+    "game.config.js": {
+      "kind": "config",
+      "size": 569,
+      "mtime": 1780946292505,
+      "sha256": "891043b1f6ad2a7470aa2ac8008ee7840b7e060c12f3d38e0ece688b1b46a4d4"
+    },
+    "README.md": {
+      "kind": "file",
+      "size": 1467,
+      "mtime": 1780940272536
+    },
+    "scenes/starter-scene.js": {
+      "kind": "scene",
+      "size": 273,
+      "mtime": 1780946299906,
+      "sha256": "a524808817cc720c32638dcfd589c6ad30c6f647ab62dca0294757e054666205"
+    },
+    "sprite-animations.js": {
+      "kind": "spriteAnimations",
+      "size": 459,
+      "mtime": 1780860394480,
+      "sha256": "8e5c29383c6d08d9ad901d870a69363d24015ffb5a6d834901c60888e06cd14a"
+    },
+    "sprite-manifest.json": {
+      "kind": "spriteManifest",
+      "size": 4,
+      "mtime": 1780803115334
+    },
+    "vn.js": {
+      "kind": "authorApi",
+      "size": 3237,
+      "mtime": 1780939955968,
+      "sha256": "1dc7966fd654c86cadf2bd9d5db117a4437079454018fb1bfbce1ada2798f11d"
+    }
+  }
+}

@@ -16,13 +16,13 @@ import {
 } from "../vn.js";
 
 export const basicSceneExample = scene({
-  id: "scene_example_basic",
+  id: "scene-example-basic",
   mode: "test",
   cast: ["me", "alex"],
   script: [
     stage("irl"),
-    background("starter_room_day"),
-    audioScene("quiet_room", { transition: 800 }),
+    background("starter-room-day"),
+    audioScene("quiet-room", { transition: 800 }),
     show("alex", {
       outfit: "casual",
       expression: "neutral",

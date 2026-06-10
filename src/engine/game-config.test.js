@@ -18,7 +18,7 @@ describe("game config normalization", () => {
       subtitle: "a mystery",
       footer: "dev build",
       about: "About text.",
-      firstSceneId: "scene_one",
+      firstSceneId: "scene-one",
       shell: {
         saveTitle: "Bookmark",
         loadTitle: "Resume",
@@ -54,7 +54,7 @@ describe("game config normalization", () => {
     expect(config.shell.manualSlotCount).toBe(4);
     expect(config.shell.preferencesTitle).toBe("Options");
     expect(config.shell.confirmLoad).toBe("Resume file?");
-    expect(config.shell.missingTargetMessage("scene_two")).toBe("Missing scene_two");
+    expect(config.shell.missingTargetMessage("scene-two")).toBe("Missing scene-two");
     expect(config.storage.slotPrefix).toBe("example-slot-");
     expect(config.storage.legacySettings).toBe("old-settings");
   });

@@ -7,6 +7,7 @@ import {
   close,
   transition,
   set,
+  mark,
   show,
   hide,
   hideAll,
@@ -545,6 +546,87 @@ describe("SceneRunner surface stack", () => {
     expect(runner.state.visuals.texting.threads.alex.unread).toBe(false);
   });
 
+  it("does not treat a transition from texting to streaming as a text notification", () => {
+    const streamingScene = scene({
+      id: "stream_scene",
+      contact: { id: "alex", name: "Alex", avatar: "A" },
+      script: [
+        stage("streaming"),
+        streamTitle("Live soon")
+      ]
+    });
+    const testScene = scene({
+      id: "runner_test_scene",
+      cast: ["riley", "alex"],
+      script: [
+        stage("texting"),
+        thread("riley"),
+        say("riley", "Hi."),
+        transition("Open stream", "stream_scene")
+      ]
+    });
+    const renderers = fakeRenderers();
+    const runner = new SceneRunner({
+      initialScene: testScene,
+      initialState: createInitialState(),
+      renderers,
+      compositor: fakeCompositor(),
+      registry: {
+        runner_test_scene: testScene,
+        stream_scene: streamingScene
+      },
+      audio: fakeAudio()
+    });
+
+    runner.start();
+    renderers.texting.showTextBlock.mock.calls[0][1].onComplete();
+    runner.advance();
+
+    expect(renderers.texting.showThreadNotification).not.toHaveBeenCalled();
+    expect(renderers.texting.showTransition).toHaveBeenCalledOnce();
+    expect(runner.state.visuals.texting.threads.alex).toBeUndefined();
+  });
+
+  it("does not show a text notification when Messages is open as a phone app", () => {
+    const alexScene = scene({
+      id: "alex_scene",
+      contact: { id: "alex", name: "Alex", avatar: "A" },
+      script: [
+        stage("texting"),
+        thread("alex"),
+        say("alex", "Directly open this thread.")
+      ]
+    });
+    const testScene = scene({
+      id: "runner_test_scene",
+      cast: ["alex"],
+      script: [
+        stage("streaming"),
+        transition("Open message", "alex_scene")
+      ]
+    });
+    const renderers = fakeRenderers();
+    const runner = new SceneRunner({
+      initialScene: testScene,
+      initialState: createInitialState(),
+      renderers,
+      compositor: fakeCompositor(),
+      registry: {
+        runner_test_scene: testScene,
+        alex_scene: alexScene
+      },
+      audio: fakeAudio()
+    });
+
+    runner.start();
+    runner.openPhoneApp("texting");
+    runner.executeCommand(testScene.script[1]);
+
+    expect(runner.isTextingInboxMode()).toBe(true);
+    expect(renderers.texting.showThreadNotification).not.toHaveBeenCalled();
+    expect(renderers.texting.showTransition).toHaveBeenCalledOnce();
+  });
+
   it("does not advance the story while a phone app is open", () => {
     const { runner, compositor } = makeRunner([stage("irl")]);
 
@@ -867,6 +949,10 @@ describe("SceneRunner surface stack", () => {
 });
 
 describe("SceneRunner author conditions", () => {
+  function completeDialogue(compositor, callIndex = 0) {
+    compositor.showDialogue.mock.calls[callIndex][2].onComplete();
+  }
+
   it("uses human truthiness for flag checks", () => {
     const { runner } = makeRunner([]);
     runner.state.vars.metAlex = "0";
@@ -895,6 +981,111 @@ describe("SceneRunner author conditions", () => {
 
     runner.state.vars.name = "Alex";
     expect(runner.evaluateCondition(condition({ var: "name", hasText: true, then: "yes", else: "no" }))).toBe(true);
+  });
+
+  it("runs command blocks from condition then/else branches", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      set("found_keycard", true),
+      condition({
+        if: { flag: "found_keycard" },
+        then: [
+          say("alex", "You have clearance.")
+        ],
+        else: [
+          say("alex", "I can't let you in.")
+        ]
+      }),
+      say("alex", "After.")
+    ]);
+
+    runner.start();
+
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+    expect(compositor.showDialogue.mock.calls[0][0].message).toBe("You have clearance.");
+
+    completeDialogue(compositor);
+    runner.advance();
+
+    expect(compositor.showDialogue).toHaveBeenCalledTimes(2);
+    expect(compositor.showDialogue.mock.calls[1][0].message).toBe("After.");
+  });
+
+  it("evaluates elseIf branches in order", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      set("knows_password", true),
+      condition({
+        if: { flag: "found_keycard" },
+        then: [
+          say("alex", "You have clearance.")
+        ],
+        elseIf: [
+          {
+            if: { flag: "knows_password" },
+            then: [
+              say("alex", "Password accepted.")
+            ]
+          }
+        ],
+        else: [
+          say("alex", "I can't let you in.")
+        ]
+      })
+    ]);
+
+    runner.start();
+
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+    expect(compositor.showDialogue.mock.calls[0][0].message).toBe("Password accepted.");
+  });
+
+  it("supports compound structured predicates", () => {
+    const { runner } = makeRunner([]);
+    runner.state.vars.tour_start = "0";
+    runner.state.vars.money = "6";
+    runner.state.vars.blocked = false;
+
+    expect(runner.evaluateCondition(condition({
+      if: {
+        all: [
+          {
+            any: [
+              { flag: "tour_start" },
+              { var: "money", moreThan: 5 }
+            ]
+          },
+          { not: { flag: "blocked" } }
+        ]
+      },
+      then: "yes",
+      else: "no"
+    }))).toBe(true);
+  });
+
+  it("routes string condition targets through marks or scene ids", () => {
+    const nextScene = scene({
+      id: "condition_next_scene",
+      cast: ["me"],
+      script: [
+        stage("irl"),
+        say("alex", "Next scene.")
+      ]
+    });
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      set("route", true),
+      condition({ flag: "route", then: "condition_next_scene", else: "fallback" }),
+      mark("fallback"),
+      say("alex", "Fallback.")
+    ]);
+    runner.registry[nextScene.id] = nextScene;
+
+    runner.start();
+
+    expect(runner.scene.id).toBe("condition_next_scene");
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+    expect(compositor.showDialogue.mock.calls[0][0].message).toBe("Next scene.");
   });
 });
 

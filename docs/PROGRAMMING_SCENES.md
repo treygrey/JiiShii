@@ -25,8 +25,9 @@ is the stable public surface for game packages.
 
 ## From Zero To A Game
 
-The engine is split into reusable engine code and one active game package.
-Most authors should only edit `src/game/`.
+The engine is split into reusable engine code and a game package. In bundled
+web development, that package is `src/game/`. In desktop loose-package builds,
+the same package shape lives in a sibling `game/` folder beside the player.
 
 ```text
 src/
@@ -40,6 +41,7 @@ src/
     scenes/            scene files, auto-discovered
     assets/            images, audio, sprites
     surface-modules/   optional custom surfaces
+    game.manifest.json loose desktop package index
     sprite-manifest.json
 ```
 
@@ -57,13 +59,15 @@ Useful commands:
 ```powershell
 npm.cmd run dev
 npm.cmd run gen:sprites
+npm.cmd run game:manifest
 npm.cmd run test
 npm.cmd run build
 ```
 
 `npm.cmd run dev` starts the local Vite build. `npm.cmd run gen:sprites`
-regenerates `src/game/sprite-manifest.json` after sprite files change. Tests and
-build are the basic health gates.
+regenerates `src/game/sprite-manifest.json` after sprite files change.
+`npm.cmd run game:manifest` regenerates the loose desktop package manifest.
+Tests and build are the basic health gates.
 
 ## Changing The Title Screen
 
@@ -75,7 +79,7 @@ export const GAME_CONFIG = {
   subtitle: "a story about impossible Tuesdays",
   footer: "demo build",
   about: "A short description shown in the About overlay.",
-  firstSceneId: "scene_001_start",
+  firstSceneId: "scene-001-start",
   shell: {
     saveTitle: "Save Game",
     loadTitle: "Load Game",
@@ -108,7 +112,9 @@ The important fields:
 - `subtitle`: title screen subtitle.
 - `footer`: small build/status line on the title screen.
 - `about`: text for the About overlay.
-- `firstSceneId`: scene id used when the player presses Start.
+- `firstSceneId`: exact scene id used when the player presses Start. JiiShii
+  does not rewrite `scene-001-start` into `scene_001_start`; use the same id
+  you put in `scene({ id })`.
 - `shell`: player-facing menu/save/history/preference labels.
 - `storage`: localStorage keys. Change these for each game so saves do not
   collide with another JiiShii project.
@@ -128,14 +134,19 @@ To start a new game:
 
 1. Keep `src/engine`, `src/renderers`, and `src/ui` alone.
 2. Replace the contents of `src/game` with your game package.
-3. Keep `src/game/vn.js` unless you know you need to expose extra author
-   helpers.
+3. Keep the package-local `vn.js` unless you know you need to expose extra
+   author helpers.
 4. Set `GAME_CONFIG.firstSceneId`.
 5. Add at least one scene with that id.
 
 Files ending in `.example.js`, `.test.js`, `.spec.js`, or starting with `_` are
 ignored by scene/module discovery. That lets you keep examples and private
 scratch files beside real content without registering them.
+
+For desktop sharing without recompiling the engine, keep the same package files
+in a sibling `game/` folder beside the compiled player. See
+`docs/GAME_PACKAGE_GUIDE.md` for loose package manifests and Tauri player
+details.
 
 ## Characters
 
@@ -171,7 +182,7 @@ Scene-local character declarations can override or add to globals:
 
 ```js
 scene({
-  id: "scene_010",
+  id: "scene-010",
   cast: ["me", "alex"],
   characters: [
     { id: "alex", name: "Alex", defaultOutfit: "jacket" }
@@ -199,8 +210,9 @@ src/game/assets/
   sprites/
 ```
 
-Image and audio ids are derived from filenames and folders. Spaces, punctuation,
-and hyphens normalize into underscores.
+Image and audio ids are derived from filenames and folders without rewriting
+the text you chose. JiiShii drops the extension and leading asset root, but it
+does not lowercase, hyphenate, or convert underscores.
 
 ```text
 src/game/assets/backgrounds/demo room/day.png
@@ -209,7 +221,7 @@ src/game/assets/backgrounds/demo room/day.png
 Can be referenced as:
 
 ```js
-background("backgrounds_demo_room_day")
+background("backgrounds/demo room/day")
 ```
 
 The engine may also create shorter ids when they are unambiguous:
@@ -225,13 +237,13 @@ ignored by discovery.
 Common asset commands:
 
 ```js
-background("demo_room_day")
-cg("demo_cg")
-image("note", "demo_note")
-photo("alex", "demo_photo")
-streamImage("demo_camera")
-music("main_theme")
-sound("door_slam")
+background("backgrounds/demo-room-day")
+cg("cg/demo-cg")
+image("note", "props/demo-note")
+photo("alex", "photos/demo-photo")
+streamImage("stream/demo-camera")
+music("music/main-theme")
+sound("sfx/door-slam")
 ```
 
 ## Sprites
@@ -338,15 +350,15 @@ accident should fail loudly before a player sees it.
 
 ```js
 export default scene({
-  id: "scene_010_example",
+  id: "scene-010-example",
   title: "Example Scene",
   cast: ["me", "alex"],
   script: [
     stage("irl"),
-    background("demo_room_day"),
+    background("backgrounds/demo-room-day"),
     show("alex", { outfit: "casual", expression: "neutral", at: "center" }),
     say("alex", "This is a scene."),
-    transition("Continue", "scene_011_next")
+    transition("Continue", "scene-011-next")
   ]
 });
 ```
@@ -376,9 +388,9 @@ dialogue, narration, choices, audio, and pacing effects.
 ### Backgrounds
 
 ```js
-background("demo_room_day")
-background("demo_room_night", { transition: "cut" })
-background("demo_hall_day", { transition: "fade_to_black", duration: 900 })
+background("backgrounds/demo-room-day")
+background("backgrounds/demo-room-night", { transition: "cut" })
+background("backgrounds/demo-hall-day", { transition: "fade_to_black", duration: 900 })
 ```
 
 Background state is runner-owned, so rollback and save/load restore it from
@@ -580,7 +592,7 @@ Texting can be opened over another surface:
 
 ```js
 stage("irl")
-background("demo_room_day")
+background("backgrounds/demo-room-day")
 
 open("texting")
 thread("alex")
@@ -626,7 +638,7 @@ mark("deflect")
 say("alex", "nice try")
 
 mark("done")
-transition("Continue", "scene_011_next")
+transition("Continue", "scene-011-next")
 ```
 
 Use `mark()` for local labels and `goto()` for local labels or scene ids.
@@ -647,18 +659,130 @@ add("trust", 1)
 setFlag("metAlex")
 clearFlag("metAlex")
 roll("die", 1, 6)
-condition({ flag: "metAlex", then: "warm", else: "guarded" })
-condition({ var: "trust", atLeast: 3, then: "close", else: "guarded" })
-condition({ var: "name", hasText: true, then: "named", else: "anonymous" })
+condition({
+  if: { flag: "metAlex" },
+  then: [
+    say("alex", "You came back.")
+  ],
+  else: [
+    say("alex", "Do I know you?")
+  ]
+})
 ```
 
 Variables, choices, PRNG state, surfaces, visuals, audio, and reader history are
 serialized or snapshotted by the runner. That is why rollback can rebuild the
 same moment instead of guessing from renderer DOM.
 
+`condition()` is the catchall branching command. It checks the current variable
+store, runs the `then` commands when the check passes, tries `elseIf` branches in
+order when it does not, and runs `else` commands when nothing matched.
+
+Use it for inline dialogue or narration variation:
+
+```js
+condition({
+  if: { flag: "found_keycard" },
+  then: [
+    say("guard", "You have clearance.")
+  ],
+  elseIf: [
+    {
+      if: { flag: "knows_password" },
+      then: [
+        say("guard", "Password accepted.")
+      ]
+    }
+  ],
+  else: [
+    say("guard", "I can't let you in.")
+  ]
+})
+```
+
+Use compound predicates when one check depends on several facts:
+
+```js
+condition({
+  if: {
+    any: [
+      { flag: "tour_start" },
+      { var: "money", moreThan: 5 }
+    ]
+  },
+  then: [
+    say("me", "Hey!")
+  ]
+})
+```
+
 Condition checks use author-facing comparison rules instead of raw JavaScript
 strict equality. Empty values, `0`, `"0"`, `false`, `"false"`, `"no"`, and
 `"off"` all read as off; number-looking strings compare as numbers.
+
+Supported condition shapes:
+
+```js
+condition({ flag: "metAlex", then: "yes", else: "no" })
+condition({ var: "trust", is: 3, then: "yes", else: "no" })
+condition({ var: "trust", isNot: 0, then: "yes", else: "no" })
+condition({ var: "trust", atLeast: 3, then: "yes", else: "no" })
+condition({ var: "trust", atMost: 3, then: "yes", else: "no" })
+condition({ var: "trust", moreThan: 3, then: "yes", else: "no" })
+condition({ var: "trust", lessThan: 3, then: "yes", else: "no" })
+condition({ var: "name", hasText: true, then: "named", else: "anonymous" })
+condition({ if: (vars) => vars.trust >= 3 && vars.metAlex, then: "yes", else: "no" })
+```
+
+Prefer the structured `if: { ... }` forms for new scenes:
+
+```js
+condition({ if: { flag: "metAlex" }, then: [say("alex", "hey")] })
+condition({ if: { var: "trust", atLeast: 3 }, then: [say("alex", "okay")] })
+condition({ if: { var: "name", hasText: true }, then: [say("alex", "nice name")] })
+condition({
+  if: {
+    all: [
+      { flag: "metAlex" },
+      { not: { flag: "alexAngry" } }
+    ]
+  },
+  then: [
+    say("alex", "We're good.")
+  ]
+})
+```
+
+The function form is the JavaScript escape hatch for complex logic:
+
+```js
+condition({
+  if: (vars) => vars.trust >= 3 && vars.metAlex,
+  then: [
+    say("alex", "I trust you.")
+  ]
+})
+```
+
+Use the named forms when they can express the branch, because the validator can
+explain mistakes in plain language.
+
+`then` and `else` can also be string targets for mark/scene routing. This is the
+legacy form and remains useful when scene structure should split:
+
+```js
+condition({ flag: "metAlex", then: "alex_knows_you", else: "alex_stranger" })
+
+mark("alex_knows_you")
+say("alex", "You came back.")
+goto("after_alex_intro")
+
+mark("alex_stranger")
+say("alex", "Do I know you?")
+
+mark("after_alex_intro")
+say("me", "Anyway...")
+```
 
 ## Validation Rules To Remember
 
@@ -690,8 +814,8 @@ One file may export one scene or a scene pack array:
 
 ```js
 export const chapterOne = [
-  scene({ id: "scene_010_intro", script: [stage("irl"), say("...")] }),
-  scene({ id: "scene_011_followup", script: [stage("irl"), say("...")] })
+  scene({ id: "scene-010-intro", script: [stage("irl"), say("...")] }),
+  scene({ id: "scene-011-followup", script: [stage("irl"), say("...")] })
 ];
 ```
 
@@ -699,7 +823,8 @@ Pack arrays are strict: every item in the array must be a valid scene. Helper
 exports outside the array are fine. Use
 `src/game/scenes/chapter-pack.example.js` as a copyable starter.
 
-Set the starting scene in `src/game/game.config.js` with `firstSceneId`.
+Set the starting scene in `src/game/game.config.js` with `firstSceneId`. It must
+match the scene id exactly.
 
 ## Adding Assets
 
@@ -715,7 +840,7 @@ src/game/assets/backgrounds/demo room/day.png
 Can be referenced as:
 
 ```js
-background("backgrounds_demo_room_day")
+background("backgrounds/demo room/day")
 ```
 
 Short ids exist only when they are unambiguous. If two files would claim the

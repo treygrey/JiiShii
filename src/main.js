@@ -1,27 +1,4 @@
 import "./styles.css";
-import "./game/sprite-animations.js";
-import { SCENES, FIRST_SCENE_ID } from "./game/scenes/index.js";
-import { SURFACE_MODULES, SURFACE_RENDERER_CONSTRUCTORS } from "./game/surface-modules/index.js";
-import { GAME_CONFIG } from "./game/game.config.js";
-import {
-  listImageIds,
-  resolveImage,
-  resolveImageAmbiguity
-} from "./game/assets.js";
-import {
-  listAudioIds,
-  resolveAudio,
-  resolveAudioAmbiguity
-} from "./game/audio.js";
-import { GLOBAL_CHARACTERS } from "./game/characters.js";
-import {
-  listExpressions,
-  listBodies,
-  listOutfits,
-  listMissingRequiredSpriteLayers,
-  resolveExpression,
-  resolveSprite
-} from "./game/sprites.js";
 import { validateScenes } from "./engine/validator.js";
 import { normalizeGameConfig } from "./engine/game-config.js";
 import { createInitialState } from "./engine/state.js";
@@ -48,53 +25,83 @@ import { StreamingRenderer } from "./renderers/streaming/streaming-renderer.js";
 import { PhoneHomeRenderer } from "./renderers/phone/phone-home-renderer.js";
 import { GalleryRenderer } from "./renderers/phone/gallery-renderer.js";
 import { SocialRenderer } from "./renderers/phone/social-renderer.js";
+import { loadGamePackage } from "./player/package-loader.js";
 
-const GAME = normalizeGameConfig(GAME_CONFIG);
-const SAVE_KEY = GAME.storage.save;
-const AUTOSAVE_KEY = GAME.storage.autosave;
-const SETTINGS_KEY = GAME.storage.settings;
-const SLOT_PREFIX = GAME.storage.slotPrefix;
-const LEGACY_SAVE_KEY = GAME.storage.legacySave;
-const LEGACY_AUTOSAVE_KEY = GAME.storage.legacyAutosave;
-const LEGACY_SETTINGS_KEY = GAME.storage.legacySettings;
-const LEGACY_SLOT_PREFIX = GAME.storage.legacySlotPrefix;
-const GAME_TITLE = GAME.title;
-const GAME_SUBTITLE = GAME.subtitle;
-const GAME_FOOTER = GAME.footer;
-const ABOUT_TEXT = GAME.about;
-const SAVE_TITLE = GAME.shell.saveTitle;
-const LOAD_TITLE = GAME.shell.loadTitle;
-const AUTOSAVE_LABEL = GAME.shell.autosaveLabel;
-const MANUAL_SLOT_COUNT = GAME.shell.manualSlotCount;
-const MANUAL_SLOT_LABEL = GAME.shell.manualSlotLabel;
-const PREFERENCES_TITLE = GAME.shell.preferencesTitle;
-const PREFERENCES_DEFAULTS_LABEL = GAME.shell.preferencesDefaultsLabel;
-const HISTORY_TITLE = GAME.shell.historyTitle;
-const HISTORY_EMPTY_LABEL = GAME.shell.historyEmptyLabel;
-const CONFIRM_OVERWRITE = GAME.shell.confirmOverwrite;
-const CONFIRM_LOAD = GAME.shell.confirmLoad;
-const END_KICKER = GAME.shell.endKicker;
-const END_TITLE = GAME.shell.endTitle;
-const END_DEFAULT_MESSAGE = GAME.shell.endDefaultMessage;
-const MISSING_TARGET_MESSAGE = GAME.shell.missingTargetMessage;
-const RETURN_TO_TITLE_LABEL = GAME.shell.returnToTitleLabel;
-const PHONE_CONFIG = GAME.phone;
-
-/** @type {{ textSpeed: number, autoDelay: number }} */
-const settings = loadSettings();
-
+let GAME_PACKAGE = null;
+let GAME = null;
+let SCENES = null;
+let FIRST_SCENE_ID = null;
+let SURFACE_MODULES = null;
+let SURFACE_RENDERER_CONSTRUCTORS = null;
+let GLOBAL_CHARACTERS = null;
+let listImageIds = null;
+let resolveImage = null;
+let resolveImageAmbiguity = null;
+let listAudioIds = null;
+let resolveAudio = null;
+let resolveAudioAmbiguity = null;
+let listExpressions = null;
+let listBodies = null;
+let listOutfits = null;
+let listMissingRequiredSpriteLayers = null;
+let resolveExpression = null;
+let resolveSprite = null;
+let SAVE_KEY = null;
+let AUTOSAVE_KEY = null;
+let SETTINGS_KEY = null;
+let SLOT_PREFIX = null;
+let LEGACY_SAVE_KEY = null;
+let LEGACY_AUTOSAVE_KEY = null;
+let LEGACY_SETTINGS_KEY = null;
+let LEGACY_SLOT_PREFIX = null;
+let GAME_TITLE = null;
+let GAME_SUBTITLE = null;
+let GAME_FOOTER = null;
+let ABOUT_TEXT = null;
+let SAVE_TITLE = null;
+let LOAD_TITLE = null;
+let AUTOSAVE_LABEL = null;
+let MANUAL_SLOT_COUNT = null;
+let MANUAL_SLOT_LABEL = null;
+let PREFERENCES_TITLE = null;
+let PREFERENCES_DEFAULTS_LABEL = null;
+let HISTORY_TITLE = null;
+let HISTORY_EMPTY_LABEL = null;
+let CONFIRM_OVERWRITE = null;
+let CONFIRM_LOAD = null;
+let END_KICKER = null;
+let END_TITLE = null;
+let END_DEFAULT_MESSAGE = null;
+let MISSING_TARGET_MESSAGE = null;
+let RETURN_TO_TITLE_LABEL = null;
+let PHONE_CONFIG = null;
+let settings = null;
 let runner = null;
 let autoOn = false;
 let skipOn = false;
 let autoTimer = null;
+let appRoot = null;
+let stage = null;
+let quickMenu = null;
+let mainMenu = null;
+let phoneButton = null;
+let stageBg = null;
+let backgrounds = null;
 
-const appRoot = document.querySelector("#app");
-appRoot.innerHTML = buildShell();
-
-const stage = appRoot.querySelector("#game-stage");
-const quickMenu = appRoot.querySelector(".quick-menu");
-const mainMenu = appRoot.querySelector("#main-menu");
-const phoneButton = appRoot.querySelector("[data-phone-button]");
+bootApp().catch((error) => {
+  console.error(error);
+  const root = document.querySelector("#app");
+  if (root) {
+    root.innerHTML = `
+      <div class="scene-errors">
+        <div class="scene-errors-card">
+          <h2>JiiShii could not start</h2>
+          <p>${escapeHtml(error?.message ?? error)}</p>
+        </div>
+      </div>
+    `;
+  }
+});
 
 /**
  * Returns the configured manual save-slot key.
@@ -125,133 +132,208 @@ function readFirstStorage(keys) {
   return null;
 }
 
-// Compositor base layer: the IRL room background image. This persists across
-// surface changes and is never torn down by a renderer.
-const stageBg = document.createElement("div");
-stageBg.className = "stage-bg";
-stageBg.setAttribute("aria-hidden", "true");
-stage.append(stageBg);
-
-// Owns the two background frames and crossfades/dips between images. Skip mode
-// forces instant cuts so fast-forward never stalls on a fade.
-const backgrounds = new BackgroundTransitioner(stageBg, {
-  resolveImage,
-  shouldInstant: () => skipOn
-});
-
-// Let {$var} markup interpolation read the live variable bag (re-reads each call,
-// so it survives load() swapping the state object).
-setMarkupVarsProvider(() => runner?.state?.vars ?? {});
-
-// Live state inspector — toggle with the backtick (`) key.
-createDebugOverlay({ getRunner: () => runner });
-
-bootMenu();
-wireMainMenu();
-wireQuickMenu();
-wireOverlays();
-wirePhoneButton();
-wirePhoneChromeNavigation();
-refreshContinueState();
-
-// Click anywhere in the play area advances. The quick menu and overlays are
-// siblings of the stage, so their clicks never bubble here; choice/transition
-// buttons stopPropagation, so a decision is never skipped by a stray tap.
-stage.addEventListener("click", () => {
-  if (hasOpenOverlay()) {
-    return;
+/**
+ * Loads the active package, initializes shell constants, and wires the player.
+ *
+ * @returns {Promise<void>} Resolves when the player shell is ready.
+ */
+async function bootApp() {
+  GAME_PACKAGE = await loadGamePackage();
+  GAME = normalizeGameConfig(GAME_PACKAGE.gameConfig);
+  SCENES = GAME_PACKAGE.scenes;
+  FIRST_SCENE_ID = GAME_PACKAGE.firstSceneId;
+  SURFACE_MODULES = GAME_PACKAGE.surfaceModules;
+  SURFACE_RENDERER_CONSTRUCTORS = GAME_PACKAGE.rendererConstructors;
+  GLOBAL_CHARACTERS = GAME_PACKAGE.globalCharacters;
+  ({
+    listImageIds,
+    resolveImage,
+    resolveImageAmbiguity,
+    listAudioIds,
+    resolveAudio,
+    resolveAudioAmbiguity,
+    listExpressions,
+    listBodies,
+    listOutfits,
+    listMissingRequiredSpriteLayers,
+    resolveExpression,
+    resolveSprite
+  } = GAME_PACKAGE);
+  for (const warning of GAME_PACKAGE.packageWarnings ?? []) {
+    console.warn(`[package] ${warning}`);
   }
-  runner?.advance();
-});
+  SAVE_KEY = GAME.storage.save;
+  AUTOSAVE_KEY = GAME.storage.autosave;
+  SETTINGS_KEY = GAME.storage.settings;
+  SLOT_PREFIX = GAME.storage.slotPrefix;
+  LEGACY_SAVE_KEY = GAME.storage.legacySave;
+  LEGACY_AUTOSAVE_KEY = GAME.storage.legacyAutosave;
+  LEGACY_SETTINGS_KEY = GAME.storage.legacySettings;
+  LEGACY_SLOT_PREFIX = GAME.storage.legacySlotPrefix;
+  GAME_TITLE = GAME.title;
+  GAME_SUBTITLE = GAME.subtitle;
+  GAME_FOOTER = GAME.footer;
+  ABOUT_TEXT = GAME.about;
+  SAVE_TITLE = GAME.shell.saveTitle;
+  LOAD_TITLE = GAME.shell.loadTitle;
+  AUTOSAVE_LABEL = GAME.shell.autosaveLabel;
+  MANUAL_SLOT_COUNT = GAME.shell.manualSlotCount;
+  MANUAL_SLOT_LABEL = GAME.shell.manualSlotLabel;
+  PREFERENCES_TITLE = GAME.shell.preferencesTitle;
+  PREFERENCES_DEFAULTS_LABEL = GAME.shell.preferencesDefaultsLabel;
+  HISTORY_TITLE = GAME.shell.historyTitle;
+  HISTORY_EMPTY_LABEL = GAME.shell.historyEmptyLabel;
+  CONFIRM_OVERWRITE = GAME.shell.confirmOverwrite;
+  CONFIRM_LOAD = GAME.shell.confirmLoad;
+  END_KICKER = GAME.shell.endKicker;
+  END_TITLE = GAME.shell.endTitle;
+  END_DEFAULT_MESSAGE = GAME.shell.endDefaultMessage;
+  MISSING_TARGET_MESSAGE = GAME.shell.missingTargetMessage;
+  RETURN_TO_TITLE_LABEL = GAME.shell.returnToTitleLabel;
+  PHONE_CONFIG = GAME.phone;
+  settings = loadSettings();
 
-// Rollback: scroll-wheel up / PageUp steps back through readable beats, down
-// steps forward toward the live edge. Only while a game is on screen with no
-// menu/overlay open (so it never fires while scrolling History, picking a save,
-// or in Preferences), and a wheel over the phone's chat list scrolls the chat.
-let lastRollbackAt = 0;
-function tryRollback(direction) {
-  if (!runner || !mainMenu.hidden) {
-    return;
+  if (import.meta.env.DEV) {
+    window.__JIISHII_TEST__ = {
+      get runner() {
+        return runner;
+      },
+      getState() {
+        return runner?.getDebugSnapshot?.() ?? null;
+      }
+    };
   }
-  // Any open overlay (history, saves, prefs, about, end card, lightbox) takes
-  // precedence — don't roll back underneath it.
-  if (hasOpenOverlay()) {
-    return;
-  }
-  const now = performance.now();
-  if (now - lastRollbackAt < 90) {
-    return; // throttle so a fast scroll doesn't thrash the replay rebuild
-  }
-  lastRollbackAt = now;
-  if (direction < 0) {
-    runner.rollBack();
-  } else {
-    runner.rollForward();
-  }
+
+  appRoot = document.querySelector("#app");
+  appRoot.innerHTML = buildShell();
+  stage = appRoot.querySelector("#game-stage");
+  quickMenu = appRoot.querySelector(".quick-menu");
+  mainMenu = appRoot.querySelector("#main-menu");
+  phoneButton = appRoot.querySelector("[data-phone-button]");
+
+  stageBg = document.createElement("div");
+  stageBg.className = "stage-bg";
+  stageBg.setAttribute("aria-hidden", "true");
+  stage.append(stageBg);
+  backgrounds = new BackgroundTransitioner(stageBg, {
+    resolveImage,
+    shouldInstant: () => skipOn
+  });
+
+  setMarkupVarsProvider(() => runner?.state?.vars ?? {});
+  createDebugOverlay({ getRunner: () => runner });
+
+  bootMenu();
+  wireMainMenu();
+  wireQuickMenu();
+  wireOverlays();
+  wirePhoneButton();
+  wirePhoneChromeNavigation();
+  refreshContinueState();
+  wireStoryInput();
+  validateActiveScenes();
 }
-window.addEventListener(
-  "wheel",
-  (event) => {
-    if (event.target.closest?.(".message-list, .phone-app-shell")) {
+
+/**
+ * Wires stage click, rollback, and shell shortcuts after the shell exists.
+ *
+ * @returns {void}
+ */
+function wireStoryInput() {
+  stage.addEventListener("click", () => {
+    if (hasOpenOverlay()) {
       return;
     }
-    tryRollback(event.deltaY < 0 ? -1 : 1);
-  },
-  { passive: true }
-);
-window.addEventListener("keydown", (event) => {
-  if (event.key === "PageUp") {
-    event.preventDefault();
-    tryRollback(-1);
-  } else if (event.key === "PageDown") {
-    event.preventDefault();
-    tryRollback(1);
-  } else {
-    const action = resolveShellShortcut({
-      key: event.key,
-      hasOverlay: hasOpenOverlay(),
-      inMenu: !mainMenu.hidden,
-      isEditable: isEditableTarget(event.target),
-      ctrlKey: event.ctrlKey,
-      metaKey: event.metaKey,
-      altKey: event.altKey
-    });
-    if (action) {
-      event.preventDefault();
-      handleShellAction(action);
+    runner?.advance();
+  });
+
+  let lastRollbackAt = 0;
+  const tryRollback = (direction) => {
+    if (!runner || !mainMenu.hidden) {
+      return;
     }
+    if (hasOpenOverlay()) {
+      return;
+    }
+    const now = performance.now();
+    if (now - lastRollbackAt < 90) {
+      return;
+    }
+    lastRollbackAt = now;
+    if (direction < 0) {
+      runner.rollBack();
+    } else {
+      runner.rollForward();
+    }
+  };
+
+  window.addEventListener(
+    "wheel",
+    (event) => {
+      if (event.target.closest?.(".message-list, .phone-app-shell")) {
+        return;
+      }
+      tryRollback(event.deltaY < 0 ? -1 : 1);
+    },
+    { passive: true }
+  );
+  window.addEventListener("keydown", (event) => {
+    if (event.key === "PageUp") {
+      event.preventDefault();
+      tryRollback(-1);
+    } else if (event.key === "PageDown") {
+      event.preventDefault();
+      tryRollback(1);
+    } else {
+      const action = resolveShellShortcut({
+        key: event.key,
+        hasOverlay: hasOpenOverlay(),
+        inMenu: !mainMenu.hidden,
+        isEditable: isEditableTarget(event.target),
+        ctrlKey: event.ctrlKey,
+        metaKey: event.metaKey,
+        altKey: event.altKey
+      });
+      if (action) {
+        event.preventDefault();
+        handleShellAction(action);
+      }
+    }
+  });
+}
+
+/**
+ * Validates every scene up front and blocks play on production errors.
+ *
+ * @returns {void}
+ */
+function validateActiveScenes() {
+  const sceneCheck = validateScenes(SCENES, {
+    surfaceModules: SURFACE_MODULES,
+    audioScenes: GAME.audioScenes,
+    globalCharacters: GLOBAL_CHARACTERS,
+    resolveImage,
+    resolveImageAmbiguity,
+    listImageIds,
+    resolveAudio,
+    resolveAudioAmbiguity,
+    listAudioIds,
+    resolveExpression,
+    listExpressions,
+    listBodies,
+    listOutfits,
+    listMissingRequiredSpriteLayers
+  });
+  sceneCheck.warnings.forEach((warning) => console.warn(`[scene check] ${warning}`));
+  if (sceneCheck.testWarnings?.length) {
+    console.groupCollapsed(`[scene check] ${sceneCheck.testWarnings.length} note(s) from demo/test scenes`);
+    sceneCheck.testWarnings.forEach((warning) => console.warn(warning));
+    console.groupEnd();
   }
-});
-
-// Validate every scene up front. Production warnings inform (smoke alarm),
-// errors refuse to boot. Demo/prototype/test scenes are quarantined into a
-// single collapsed group so their intentional weirdness stays out of the way.
-const sceneCheck = validateScenes(SCENES, {
-  surfaceModules: SURFACE_MODULES,
-  audioScenes: GAME.audioScenes,
-  globalCharacters: GLOBAL_CHARACTERS,
-  resolveImage,
-  resolveImageAmbiguity,
-  listImageIds,
-  resolveAudio,
-  resolveAudioAmbiguity,
-  listAudioIds,
-  resolveExpression,
-  listExpressions,
-  listBodies,
-  listOutfits,
-  listMissingRequiredSpriteLayers
-});
-sceneCheck.warnings.forEach((warning) => console.warn(`[scene check] ${warning}`));
-if (sceneCheck.testWarnings?.length) {
-  console.groupCollapsed(`[scene check] ${sceneCheck.testWarnings.length} note(s) from demo/test scenes`);
-  sceneCheck.testWarnings.forEach((warning) => console.warn(warning));
-  console.groupEnd();
+  if (sceneCheck.errors.length) {
+    showSceneErrors(sceneCheck.errors);
+  }
 }
-if (sceneCheck.errors.length) {
-  showSceneErrors(sceneCheck.errors);
-}
-
 /**
  * Shows a blocking, plain-English panel of scene errors and refuses to play.
  *

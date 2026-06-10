@@ -1,8 +1,8 @@
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildSpriteManifest } from "./generate-sprite-manifest.mjs";
+import { buildSpriteManifest, generateSpriteManifest } from "./generate-sprite-manifest.mjs";
 
 /**
  * Writes a tiny placeholder file for manifest-discovery tests.
@@ -27,8 +27,8 @@ describe("sprite manifest generation", () => {
 
     touch(join(alexDir, "bodies", "default.png"));
     touch(join(alexDir, "heads", "head.png"));
-    touch(join(alexDir, "outfits", "casual.png"));
-    touch(join(alexDir, "emotions", "neutral.png"));
+    touch(join(alexDir, "outfits", "Casual-Hoodie.png"));
+    touch(join(alexDir, "emotions", "Neutral Smile.png"));
     touch(join(alexDir, "overlays", "tattoo.png"));
     touch(join(alexDir, "foreground", "hair.png"));
     writeFileSync(join(alexDir, "sprite.recipe.js"), "export default [];\n", "utf8");
@@ -39,8 +39,8 @@ describe("sprite manifest generation", () => {
     expect(manifest.alex.layers).toEqual({
       heads: { head: "head.png" },
       bodies: { default: "default.png" },
-      outfits: { casual: "casual.png" },
-      emotions: { neutral: "neutral.png" },
+      outfits: { "Casual-Hoodie": "Casual-Hoodie.png" },
+      emotions: { "Neutral Smile": "Neutral Smile.png" },
       overlays: { tattoo: "tattoo.png" },
       foreground: { hair: "hair.png" }
     });
@@ -59,5 +59,19 @@ describe("sprite manifest generation", () => {
     expect(manifest.alex.layers.heads).toEqual({ head: "alex_head.png" });
     expect(manifest.alex.layers.bodies).toEqual({ default: "alex_head.png" });
     expect(manifest.alex.layers.foreground).toEqual({ hair: "foreground_hair.png" });
+  });
+
+  it("writes a manifest for an external game package root", () => {
+    const gameDir = mkdtempSync(join(tmpdir(), "jiishii-game-root-"));
+    const alexDir = join(gameDir, "assets", "sprites", "alex", "outfits");
+    mkdirSync(alexDir, { recursive: true });
+    touch(join(alexDir, "Casual-Hoodie.png"));
+
+    const outFile = generateSpriteManifest({ gameDir });
+    const manifest = JSON.parse(readFileSync(outFile, "utf8"));
+
+    expect(outFile).toBe(join(gameDir, "sprite-manifest.json"));
+    expect(existsSync(outFile)).toBe(true);
+    expect(manifest.alex.outfits).toEqual({ "Casual-Hoodie": "Casual-Hoodie.png" });
   });
 });

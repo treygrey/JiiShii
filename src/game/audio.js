@@ -2,7 +2,7 @@ import {
   audioIdsFromPath,
   buildAssetDiscovery,
   buildAssetRegistry,
-  normalizeAssetId
+  assetIdFromPathText
 } from "../engine/asset-discovery.js";
 
 const AUDIO_MODULES = import.meta.glob(
@@ -49,7 +49,7 @@ export function buildAudioRegistry(modules, aliases = {}) {
   });
 }
 
-export { audioIdsFromPath, normalizeAssetId as normalizeAudioId };
+export { audioIdsFromPath, assetIdFromPathText as audioIdFromPathText };
 
 export const AUDIO_ASSETS = AUDIO_DISCOVERY.assets;
 

@@ -24,8 +24,42 @@ import { join, dirname, basename, extname } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
-export const SPRITES_DIR = join(ROOT, "src/game/assets/sprites");
-export const OUT_FILE = join(ROOT, "src/game/sprite-manifest.json");
+export const GAME_DIR = join(ROOT, "src/game");
+export const SPRITES_DIR = join(GAME_DIR, "assets/sprites");
+export const OUT_FILE = join(GAME_DIR, "sprite-manifest.json");
+
+/**
+ * Reads a string CLI option from process arguments.
+ *
+ * @param {string[]} args - Raw CLI arguments.
+ * @param {string} name - Option name without leading dashes.
+ * @returns {string|null} Option value, or null when absent.
+ */
+function readCliOption(args, name) {
+  const inlinePrefix = `--${name}=`;
+  const inline = args.find((arg) => arg.startsWith(inlinePrefix));
+  if (inline) {
+    return inline.slice(inlinePrefix.length);
+  }
+  const index = args.indexOf(`--${name}`);
+  if (index !== -1 && args[index + 1]) {
+    return args[index + 1];
+  }
+  return null;
+}
+
+/**
+ * Resolves generator paths from a game package root.
+ *
+ * @param {string} gameDir - Game package root.
+ * @returns {{ spritesDir: string, outFile: string }} Resolved paths.
+ */
+export function resolveSpriteManifestPaths(gameDir = GAME_DIR) {
+  return {
+    spritesDir: join(gameDir, "assets/sprites"),
+    outFile: join(gameDir, "sprite-manifest.json")
+  };
+}
 
 /**
  * Reads file stats without letting stale filesystem entries abort discovery.
@@ -42,20 +76,10 @@ function safeStat(path) {
 }
 
 /**
- * Normalizes a name for lookup: lowercase, hyphens become underscores.
- *
- * @param {string} name - Source name.
- * @returns {string} Normalized lookup key.
- */
-function normalize(name) {
-  return String(name).toLowerCase().replace(/-/g, "_");
-}
-
-/**
- * Maps each png in a folder by normalized stem to actual filename.
+ * Maps each png in a folder by exact extensionless stem to actual filename.
  *
  * @param {string} dir - Folder to scan.
- * @returns {Record<string, string>} Normalized stem to filename.
+ * @returns {Record<string, string>} Exact stem to filename.
  */
 function indexFolder(dir) {
   const map = {};
@@ -64,7 +88,7 @@ function indexFolder(dir) {
   }
   for (const file of readdirSync(dir)) {
     if (/\.png$/i.test(file) && safeStat(join(dir, file))?.isFile()) {
-      map[normalize(basename(file, extname(file)))] = file;
+      map[basename(file, extname(file))] = file;
     }
   }
   return map;
@@ -119,9 +143,9 @@ export function buildSpriteManifest({ spritesDir = SPRITES_DIR } = {}) {
         flatHeads.head = file;
         flatBodies.default = file;
       } else if (/^outfit_/i.test(stem)) {
-        flatOutfits[normalize(stem.replace(/^outfit_/i, "").replace(new RegExp(`^${entry}_`, "i"), ""))] = file;
+        flatOutfits[stem.replace(/^outfit_/i, "").replace(new RegExp(`^${entry}_`, "i"), "")] = file;
       } else if (/^expression_/i.test(stem)) {
-        flatExpressions[normalize(stem.replace(/^expression_/i, "").replace(new RegExp(`^${entry}_`, "i"), ""))] = file;
+        flatExpressions[stem.replace(/^expression_/i, "").replace(new RegExp(`^${entry}_`, "i"), "")] = file;
       }
     }
 
@@ -151,21 +175,30 @@ export function buildSpriteManifest({ spritesDir = SPRITES_DIR } = {}) {
 }
 
 /**
- * Writes the manifest to src/game/sprite-manifest.json.
+ * Writes the manifest to a game package's sprite-manifest.json.
  *
+ * @param {object} [options] - Generator options.
+ * @param {string} [options.gameDir] - Game package root override.
+ * @param {string} [options.spritesDir] - Sprite root override.
+ * @param {string} [options.outFile] - Output file override.
  * @returns {string} Output path.
  */
-export function generateSpriteManifest() {
-  const spriteManifest = buildSpriteManifest();
-  writeFileSync(OUT_FILE, `${JSON.stringify(spriteManifest, null, 2)}\n`, "utf8");
-  return OUT_FILE;
+export function generateSpriteManifest({ gameDir = GAME_DIR, spritesDir, outFile } = {}) {
+  const paths = resolveSpriteManifestPaths(gameDir);
+  const resolvedSpritesDir = spritesDir ?? paths.spritesDir;
+  const resolvedOutFile = outFile ?? paths.outFile;
+  const spriteManifest = buildSpriteManifest({ spritesDir: resolvedSpritesDir });
+  writeFileSync(resolvedOutFile, `${JSON.stringify(spriteManifest, null, 2)}\n`, "utf8");
+  return resolvedOutFile;
 }
 
 // CLI.
 if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
   try {
-    const path = generateSpriteManifest();
-    const spriteManifest = buildSpriteManifest();
+    const gameDir = readCliOption(process.argv.slice(2), "root") ?? GAME_DIR;
+    const { spritesDir } = resolveSpriteManifestPaths(gameDir);
+    const path = generateSpriteManifest({ gameDir });
+    const spriteManifest = buildSpriteManifest({ spritesDir });
     const summary = Object.entries(spriteManifest)
       .map(([id, character]) => `${id}(${Object.keys(character.outfits).length}o/${Object.keys(character.expressions).length}e)`)
       .join(", ");

@@ -25,10 +25,12 @@ Then open the local Vite URL shown in the terminal.
 src/engine/              Engine runtime, validation, state, saves, audio, and command metadata
 src/renderers/           Built-in renderers for IRL, texting, streaming, and phone app surfaces
 src/ui/                  Player shell, menus, overlays, debug tools, and browser UI
-src/game/                Active drop-in game package
+src/game/                Bundled starter game package
+src/player/              Boot adapters for bundled and loose game packages
 templates/game-package/  Minimal starter package for a new game
 docs/                    Author and engine documentation
 scripts/                 Utility scripts, including sprite manifest generation
+src-tauri/               Optional desktop player wrapper
 ```
 
 ## Authoring A Game
@@ -73,6 +75,8 @@ npm run dev        # Start local dev server
 npm run test       # Run Vitest suite
 npm run build      # Build production bundle
 npm run gen:sprites # Regenerate sprite manifest
+npm run game:manifest # Regenerate loose-package manifest
+npm run build:app  # Build the Tauri desktop player
 ```
 
 ## Documentation
@@ -80,6 +84,8 @@ npm run gen:sprites # Regenerate sprite manifest
 Start with:
 
 - `docs/PROGRAMMING_SCENES.md`
+- `docs/GAME_PACKAGE_GUIDE.md`
+- `docs/COMPILING_DESKTOP_PLAYER.md`
 - `docs/AUDIO_COOKBOOK.md`
 - `docs/PHONE_APPS_COOKBOOK.md`
 - `docs/SPRITE_COOKBOOK.md`

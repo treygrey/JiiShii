@@ -23,7 +23,7 @@ import {
 } from "../vn.js";
 
 export default scene({
-  id: "scene_phone_tour",
+  id: "scene-phone-tour",
   title: "Phone Surface Tour",
   cast: ["guide", "friend", "critic"],
   characters: [

@@ -4,6 +4,9 @@ import { TEXTING_SURFACE } from "../../engine/surface-modules.js";
 const DEFAULT_TEXT_WAIT_TIME = 480;
 const PLAYER_REVEAL_DELAY = 140;
 const PHONE_ADVANCE_DEAD_ZONE_EVENTS = ["click", "pointerdown", "pointerup"];
+const DEFAULT_PLAYER_BUBBLE_COLOR = "#4a90e2";
+const DEFAULT_NPC_BUBBLE_COLOR = "#d1d5db";
+const PLAYER_MESSAGE_IDS = new Set(["player", "me", "you"]);
 
 /**
  * Picks a legible text color (near-black or white) for a given bubble color
@@ -168,12 +171,7 @@ export class TextingRenderer {
     });
     this.surface.querySelector("[data-phone-nav='back']")?.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (this.selectedThreadId && this.runner?.isTextingInboxMode?.()) {
-        this.selectedThreadId = null;
-        this.renderThreadList(this.lastTextingState, { characters: this.lastCharacters });
-        return;
-      }
-      this.runner?.goBackPhoneApp?.();
+      this.handleSystemBack();
     });
     this.surface.querySelector(".phone-home-button")?.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -197,6 +195,28 @@ export class TextingRenderer {
       for (const eventName of PHONE_ADVANCE_DEAD_ZONE_EVENTS) {
         deadZone.addEventListener(eventName, stopStoryAdvance);
       }
+    }
+  }
+
+  /**
+   * Handles the Android-style system back button inside the texting chrome.
+   * Texting can be either a phone app or the active story surface, so the
+   * button falls through from app navigation to normal VN rollback.
+   *
+   * @returns {void}
+   */
+  handleSystemBack() {
+    if (this.selectedThreadId && this.runner?.isTextingInboxMode?.()) {
+      this.selectedThreadId = null;
+      this.renderThreadList(this.lastTextingState, { characters: this.lastCharacters });
+      return;
+    }
+    if (this.runner?.isPhoneOpen?.()) {
+      this.runner.goBackPhoneApp?.();
+      return;
+    }
+    if (this.runner?.canRollBack?.()) {
+      this.runner.rollBack?.();
     }
   }
 
@@ -864,11 +884,12 @@ export class TextingRenderer {
    * @returns {object} Resolved message.
    */
   resolveMessage(message, characters) {
+    const isPlayerMessage = PLAYER_MESSAGE_IDS.has(message.id);
     const character = characters.get(message.id) ?? {
       id: message.id,
       name: message.id,
-      color: "#d1d5db",
-      side: "left"
+      color: isPlayerMessage ? DEFAULT_PLAYER_BUBBLE_COLOR : DEFAULT_NPC_BUBBLE_COLOR,
+      side: isPlayerMessage ? "right" : "left"
     };
     return { ...character, ...message };
   }

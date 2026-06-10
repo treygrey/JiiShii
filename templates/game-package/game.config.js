@@ -1,11 +1,9 @@
-import { normalizeGameConfig } from "../engine/game-config.js";
-
-export const GAME_CONFIG = normalizeGameConfig({
+export const GAME_CONFIG = {
   title: "Starter VN",
   subtitle: "A new JiiShii game",
   about: "Replace this starter package with your own scenes and assets.",
   footer: "Built with JiiShii",
-  firstSceneId: "starter_scene",
+  firstSceneId: "starter-scene",
   storageNamespace: "starter-vn",
   shell: {
     historyTitle: "History",
@@ -16,4 +14,4 @@ export const GAME_CONFIG = normalizeGameConfig({
     confirmLoadText: "Load this save and leave the current scene?"
   },
   audioScenes: {}
-});
+};

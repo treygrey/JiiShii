@@ -16,18 +16,18 @@ import {
 
 export const chapterPackExample = [
   scene({
-    id: "scene_example_pack_intro",
+    id: "scene-example-pack-intro",
     mode: "test",
     cast: ["me"],
     script: [
       stage("irl"),
       say("This is the first scene in a pack."),
-      transition("Continue", "scene_example_pack_followup")
+      transition("Continue", "scene-example-pack-followup")
     ]
   }),
 
   scene({
-    id: "scene_example_pack_followup",
+    id: "scene-example-pack-followup",
     mode: "test",
     cast: ["me"],
     script: [

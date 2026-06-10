@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import { resolve } from "node:path";
 import { generateSpriteManifest } from "./scripts/generate-sprite-manifest.mjs";
+import { generateAssetSuggestions } from "./scripts/generate-asset-suggestions.mjs";
 
 /**
  * Keeps src/game/sprite-manifest.json in sync with the active game sprites:
@@ -31,6 +32,44 @@ function spriteManifestPlugin() {
             generateSpriteManifest();
           } catch (error) {
             server.config.logger.warn(`[sprite-manifest] ${error.message}`);
+          }
+        }, 120);
+      };
+      for (const event of ["add", "unlink", "addDir", "unlinkDir"]) {
+        server.watcher.on(event, regen);
+      }
+    }
+  };
+}
+
+/**
+ * Keeps src/game/asset-suggestions.json in sync with the active game package's
+ * assets. This is a convenience index for validators, docs, and future editor
+ * tooling; runtime discovery still uses Vite globs.
+ *
+ * @returns {import('vite').Plugin} The plugin.
+ */
+function assetSuggestionsPlugin() {
+  const assetsDir = resolve("src/game/assets").replaceAll("\\", "/");
+  return {
+    name: "vn-asset-suggestions",
+    buildStart() {
+      generateAssetSuggestions();
+    },
+    configureServer(server) {
+      generateAssetSuggestions();
+      server.watcher.add(assetsDir);
+      let timer = null;
+      const regen = (file) => {
+        if (!String(file).replaceAll("\\", "/").includes("/src/game/assets/")) {
+          return;
+        }
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          try {
+            generateAssetSuggestions();
+          } catch (error) {
+            server.config.logger.warn(`[asset-suggestions] ${error.message}`);
           }
         }, 120);
       };
@@ -74,7 +113,7 @@ export default defineConfig({
     preserveSymlinks: true
   },
   test: {
-    exclude: ["**/node_modules/**", "**/dist/**", "**/src/game.before-*/**"]
+    exclude: ["**/node_modules/**", "**/dist/**", "**/src/game.before-*/**", "**/tests/browser/**"]
   },
-  plugins: [spriteManifestPlugin()]
+  plugins: [spriteManifestPlugin(), assetSuggestionsPlugin()]
 });

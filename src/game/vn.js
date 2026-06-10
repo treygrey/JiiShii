@@ -1,100 +1,86 @@
-// =============================================================================
-// vn.js — the writer's import. One line at the top of a scene brings in the
-// whole "Programming for English Majors" vocabulary. See
-// docs/PROGRAMMING_FOR_ENGLISH_MAJORS.md.
-// =============================================================================
+const api = globalThis.__JIISHII_AUTHOR_API__;
 
-export {
-  // Structure
-  scene,
-  useCharacter,
-  character,
-  // Stages & layers
-  surface,
-  stage,
-  open,
-  close,
-  pushSurface,
-  popSurface,
-  background,
-  flash,
-  shake,
-  // Speaking
-  say,
-  narrate,
-  narration,
-  dialogue,
-  lineBlock,
-  line,
-  // Sprites (irl)
-  show,
-  hide,
-  hideAll,
-  clearStage,
-  expression,
-  move,
-  cg,
-  clearCg,
-  image,
-  moveImage,
-  clearImage,
-  music,
-  stopMusic,
-  ambience,
-  audioScene,
-  stopAmbience,
-  sound,
-  stopSound,
-  voice,
-  phoneButton,
-  phoneApps,
-  phoneNotify,
-  clearPhoneNotify,
-  openPhone,
-  setWallpaper,
-  saveGalleryImage,
-  removeGalleryImage,
-  socialPost,
-  socialFollow,
-  socialLike,
-  // Choices & flow
-  choice,
-  goto,
-  jump,
-  mark,
-  label,
-  pause,
-  endScene,
-  // State
-  set,
-  inc,
-  add,
-  setFlag,
-  clearFlag,
-  roll,
-  condition,
-  // Texting extras
-  thread,
-  block,
-  text,
-  textImage,
-  photo,
-  reply,
-  // Streaming extras
-  streamLayout,
-  streamImage,
-  streamTitle,
-  streamWindow,
-  streamChat,
-  streamChatBlock,
-  streamNarration,
-  streamSystem,
-  streamPost,
-  // End-of-scene / chapter button
-  transition
-} from "../engine/commands.js";
+if (!api) {
+  throw new Error("JiiShii author API was not installed before loading game/vn.js.");
+}
 
-// Text markup: register your own {macro} → CSS class. Built-ins (b/i/u/s/color)
-// always work; define the class for any custom macro in styles.css.
-export { registerMarkup } from "../engine/markup.js";
-export { registerIrlSpriteTransition } from "../engine/irl-stage-direction.js";
+export const scene = api.scene;
+export const useCharacter = api.useCharacter;
+export const character = api.character;
+export const surface = api.surface;
+export const stage = api.stage;
+export const open = api.open;
+export const close = api.close;
+export const goto = api.goto;
+export const mark = api.mark;
+export const pushSurface = api.pushSurface;
+export const popSurface = api.popSurface;
+export const label = api.label;
+export const transition = api.transition;
+export const pause = api.pause;
+export const jump = api.jump;
+export const endScene = api.endScene;
+export const set = api.set;
+export const inc = api.inc;
+export const add = api.add;
+export const setFlag = api.setFlag;
+export const clearFlag = api.clearFlag;
+export const roll = api.roll;
+export const condition = api.condition;
+export const background = api.background;
+export const show = api.show;
+export const hide = api.hide;
+export const hideAll = api.hideAll;
+export const clearStage = api.clearStage;
+export const expression = api.expression;
+export const move = api.move;
+export const cg = api.cg;
+export const clearCg = api.clearCg;
+export const image = api.image;
+export const moveImage = api.moveImage;
+export const clearImage = api.clearImage;
+export const say = api.say;
+export const narrate = api.narrate;
+export const narration = api.narration;
+export const dialogue = api.dialogue;
+export const line = api.line;
+export const lineBlock = api.lineBlock;
+export const choice = api.choice;
+export const flash = api.flash;
+export const shake = api.shake;
+export const music = api.music;
+export const stopMusic = api.stopMusic;
+export const ambience = api.ambience;
+export const stopAmbience = api.stopAmbience;
+export const audioScene = api.audioScene;
+export const sound = api.sound;
+export const stopSound = api.stopSound;
+export const voice = api.voice;
+export const phoneButton = api.phoneButton;
+export const phoneApps = api.phoneApps;
+export const phoneNotify = api.phoneNotify;
+export const clearPhoneNotify = api.clearPhoneNotify;
+export const openPhone = api.openPhone;
+export const setWallpaper = api.setWallpaper;
+export const saveGalleryImage = api.saveGalleryImage;
+export const removeGalleryImage = api.removeGalleryImage;
+export const socialPost = api.socialPost;
+export const socialFollow = api.socialFollow;
+export const socialLike = api.socialLike;
+export const thread = api.thread;
+export const block = api.block;
+export const text = api.text;
+export const textImage = api.textImage;
+export const photo = api.photo;
+export const reply = api.reply;
+export const streamLayout = api.streamLayout;
+export const streamImage = api.streamImage;
+export const streamChatBlock = api.streamChatBlock;
+export const streamChat = api.streamChat;
+export const streamNarration = api.streamNarration;
+export const streamTitle = api.streamTitle;
+export const streamWindow = api.streamWindow;
+export const streamSystem = api.streamSystem;
+export const streamPost = api.streamPost;
+export const registerMarkup = api.registerMarkup;
+export const registerIrlSpriteTransition = api.registerIrlSpriteTransition;

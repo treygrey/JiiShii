@@ -6,13 +6,23 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
+    "dev:app": "tauri dev",
+    "build:app": "tauri build",
+    "game:manifest": "node scripts/generate-game-manifest.mjs",
     "gen:sprites": "node scripts/generate-sprite-manifest.mjs",
+    "gen:suggestions": "node scripts/generate-asset-suggestions.mjs",
     "test": "vitest run",
+    "test:browser": "playwright test",
     "test:watch": "vitest",
     "preview": "vite preview --host 127.0.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@tauri-apps/cli": "^2.11.2",
     "vite": "^5.4.0",
     "vitest": "^4.1.8"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0"
   }
 }

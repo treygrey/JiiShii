@@ -93,6 +93,17 @@ describe("content discovery", () => {
     expect(() => resolveFirstSceneId(registry, { firstSceneId: "missing" })).toThrow(/was not found/);
   });
 
+  it("requires configured scene ids to match exactly without snake-case aliases", () => {
+    const registry = buildSceneRegistry({
+      "./scene-phone-tour.js": {
+        default: testScene("scene-phone-tour")
+      }
+    });
+
+    expect(resolveFirstSceneId(registry, { firstSceneId: "scene-phone-tour" })).toBe("scene-phone-tour");
+    expect(() => resolveFirstSceneId(registry, { firstSceneId: "scene_phone_tour" })).toThrow(/was not found/);
+  });
+
   it("falls back to a single start scene or sorted first id", () => {
     expect(resolveFirstSceneId({
       zed: testScene("zed"),

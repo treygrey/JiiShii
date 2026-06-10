@@ -41,9 +41,16 @@ import {
   streamWindow,
   textImage,
   photo,
+  phoneApps,
+  phoneNotify,
+  openPhone,
+  removeGalleryImage,
   set,
+  saveGalleryImage,
   thread,
   transition,
+  socialLike,
+  socialPost,
   voice
 } from "./commands.js";
 
@@ -58,17 +65,17 @@ function registryOf(...scenes) {
 }
 
 const TEST_IMAGE_IDS = [
-  "demo_portrait",
-  "demo_room_day",
-  "demo_room_night"
+  "portraits/demo_portrait",
+  "backgrounds/demo_room_day",
+  "backgrounds/demo_room_night"
 ];
 const TEST_AUDIO_IDS = [
-  "theme",
-  "rain_room",
-  "door_slam",
-  "voice_line_001",
-  "club_theme",
-  "club_room"
+  "music/theme",
+  "ambience/rain_room",
+  "sfx/door_slam",
+  "voice/line_001",
+  "music/club_theme",
+  "ambience/club_room"
 ];
 const TEST_OUTFITS = {
   alex: ["casual"]
@@ -258,7 +265,7 @@ describe("validateScenes", () => {
       scene({
         id: "cg_on_texting_scene",
         cast: ["me"],
-        script: [stage("texting"), cg("demo_portrait")]
+        script: [stage("texting"), cg("portraits/demo_portrait")]
       }),
       scene({
         id: "clear_stage_on_texting_scene",
@@ -458,7 +465,35 @@ describe("validateScenes", () => {
       script: [
         stage("texting"),
         set("trust", 3),
+        set("metAlex", true),
         condition({ var: "trust", atLeast: 3, then: "close", else: "guarded" }),
+        condition({
+          if: {
+            all: [
+              { flag: "metAlex" },
+              {
+                any: [
+                  { var: "trust", atLeast: 3 },
+                  { var: "trust", is: "3" }
+                ]
+              }
+            ]
+          },
+          then: [
+            say("nested")
+          ],
+          elseIf: [
+            {
+              if: { not: { flag: "metAlex" } },
+              then: [
+                say("else if")
+              ]
+            }
+          ],
+          else: [
+            say("else")
+          ]
+        }),
         mark("close"),
         say("close"),
         mark("guarded"),
@@ -477,6 +512,15 @@ describe("validateScenes", () => {
         condition({ then: "missing_then", else: "" }),
         condition({ flag: "never_set", then: "ok", else: "missing_else" }),
         condition({ var: "trust", op: "roughly", value: 2, then: "ok", else: "ok" }),
+        condition({
+          if: { any: [] },
+          then: [
+            say("bad compound")
+          ],
+          else: [
+            say("fallback")
+          ]
+        }),
         mark("ok")
       ]
     })));
@@ -486,6 +530,7 @@ describe("validateScenes", () => {
     expectMessage(invalid.errors, 'condition() else target "missing_else" is not a scene or mark');
     expectMessage(invalid.errors, 'condition op "roughly" is not supported');
     expectMessage(invalid.errors, "condition() needs a flag, var, or if predicate");
+    expectMessage(invalid.errors, "condition if.any needs at least one predicate");
     expectMessage(invalid.warnings, 'condition checks flag "never_set"');
     expectMessage(invalid.warnings, 'condition checks variable "trust"');
   });
@@ -684,7 +729,7 @@ describe("validateScenes", () => {
         stage("irl"),
         show("alex", { outfit: "casual", expression: "neutral", at: "left", x: "28%", y: "8vh" }),
         move("alex", { at: "right", scale: 1.05, x: 64, y: 0 }),
-        image("letter", "demo_portrait", { fit: "contain", x: "calc(50% + 2rem)", y: "40%" }),
+        image("letter", "portraits/demo_portrait", { fit: "contain", x: "calc(50% + 2rem)", y: "40%" }),
         expression("alex", "happy"),
         hideAll()
       ]
@@ -721,11 +766,11 @@ describe("validateScenes", () => {
           transition: "dissovle"
         }),
         move("alex", "not_a_place"),
-        image("letter", "demo_portrait", { transition: "move" }),
+        image("letter", "portraits/demo_portrait", { transition: "move" }),
         moveImage("letter", { transition: "moveInLeft" }),
         hideAll({ transition: "not_a_transition" }),
         clearStage({ transition: "bad_clear" }),
-        background("demo_room_day", { transition: "disolve" })
+        background("backgrounds/demo_room_day", { transition: "disolve" })
       ]
     })));
 
@@ -758,7 +803,7 @@ describe("validateScenes", () => {
           duration: -1
         }),
         move("alex", { scale: -1, alpha: -0.2, easing: "" }),
-        image("letter", "demo_portrait", { scale: "big", alpha: 2, z: Number.NaN, duration: -2 }),
+        image("letter", "portraits/demo_portrait", { scale: "big", alpha: 2, z: Number.NaN, duration: -2 }),
         moveImage("letter", { alpha: -1 })
       ]
     })));
@@ -790,9 +835,9 @@ describe("validateScenes", () => {
           y: Number.POSITIVE_INFINITY
         }),
         move("alex", { x: false }),
-        image("letter", "demo_portrait", { fit: "stretch", x: [], y: "" }),
+        image("letter", "portraits/demo_portrait", { fit: "stretch", x: [], y: "" }),
         moveImage("letter", { x: [] }),
-        cg("demo_portrait", { fit: "stretchy" })
+        cg("portraits/demo_portrait", { fit: "stretchy" })
       ]
     })));
 
@@ -811,11 +856,11 @@ describe("validateScenes", () => {
       id: "valid_irl_image_scene",
       cast: ["me"],
       script: [
-        background("demo_room_day"),
-        background("demo_room_night", { transition: "fade_to_black" }),
+        background("backgrounds/demo_room_day"),
+        background("backgrounds/demo_room_night", { transition: "fade_to_black" }),
         stage("irl"),
-        cg("demo_portrait"),
-        image("letter", "demo_portrait"),
+        cg("portraits/demo_portrait"),
+        image("letter", "portraits/demo_portrait"),
         moveImage("letter", { at: "center", scale: 0.8 }),
         clearImage("letter"),
         clearCg()
@@ -829,15 +874,15 @@ describe("validateScenes", () => {
       id: "missing_irl_image_scene",
       cast: ["me"],
       script: [
-        background("demo_room_dya"),
+        background("backgrounds/demo_room_dya"),
         stage("irl"),
         cg("missing_cg"),
         image("letter", "missing_letter")
       ]
     })));
 
-    expectMessage(invalid.warnings, 'background("demo_room_dya") has no art yet');
-    expectMessage(invalid.warnings, 'Did you mean "demo_room_day"');
+    expectMessage(invalid.warnings, 'background("backgrounds/demo_room_dya") has no art yet');
+    expectMessage(invalid.warnings, 'Did you mean "backgrounds/demo_room_day"');
     expectMessage(invalid.warnings, 'cg("missing_cg") has no art yet');
     expectMessage(invalid.warnings, 'image("missing_letter") has no art yet');
   });
@@ -849,11 +894,11 @@ describe("validateScenes", () => {
       script: [
         stage("texting"),
         thread("alex"),
-        block([textImage("alex", "demo_portrait")]),
-        photo("alex", "demo_portrait"),
+        block([textImage("alex", "portraits/demo_portrait")]),
+        photo("alex", "portraits/demo_portrait"),
         stage("streaming"),
-        streamImage("demo_portrait"),
-        streamWindow("live", "demo_portrait")
+        streamImage("portraits/demo_portrait"),
+        streamWindow("live", "portraits/demo_portrait")
       ]
     })));
 
@@ -887,20 +932,20 @@ describe("validateScenes", () => {
       cast: ["me"],
       script: [
         stage("irl"),
-        background("living_room_day")
+        background("living room day")
       ]
     })), {
       resolveImage: () => null,
-      resolveImageAmbiguity: (id) => (id === "living_room_day"
-        ? ["backgrounds_demo_home_living_room_day", "backgrounds_demo_office_living_room_day"]
+      resolveImageAmbiguity: (id) => (id === "living room day"
+        ? ["backgrounds/demo home/living room day", "backgrounds/demo office/living room day"]
         : null),
       listImageIds: () => []
     });
 
     expect(result.errors).toEqual([]);
-    expectMessage(result.warnings, 'background("living_room_day") is ambiguous');
-    expectMessage(result.warnings, "backgrounds_demo_home_living_room_day");
-    expectMessage(result.warnings, "backgrounds_demo_office_living_room_day");
+    expectMessage(result.warnings, 'background("living room day") is ambiguous');
+    expectMessage(result.warnings, "backgrounds/demo home/living room day");
+    expectMessage(result.warnings, "backgrounds/demo office/living room day");
   });
 
   it("warns about missing audio assets", () => {
@@ -930,20 +975,20 @@ describe("validateScenes", () => {
       cast: ["me"],
       script: [
         stage("irl"),
-        sound("door_slam")
+        sound("door slam")
       ]
     })), {
       resolveAudio: () => null,
-      resolveAudioAmbiguity: (id) => (id === "door_slam"
-        ? ["sfx_door_slam", "foley_door_slam"]
+      resolveAudioAmbiguity: (id) => (id === "door slam"
+        ? ["sfx/door slam", "foley/door slam"]
         : null),
       listAudioIds: () => []
     });
 
     expect(result.errors).toEqual([]);
-    expectMessage(result.warnings, 'sound("door_slam") is ambiguous');
-    expectMessage(result.warnings, "sfx_door_slam");
-    expectMessage(result.warnings, "foley_door_slam");
+    expectMessage(result.warnings, 'sound("door slam") is ambiguous');
+    expectMessage(result.warnings, "sfx/door slam");
+    expectMessage(result.warnings, "foley/door slam");
   });
 
   it("validates audioScene presets and their referenced assets", () => {
@@ -957,12 +1002,12 @@ describe("validateScenes", () => {
     })), {
       audioScenes: {
         demo_room: {
-          music: { id: "club_theme", volume: 0.5 },
-          ambience: { id: "club_room", volume: 0.25 }
+          music: { id: "music/club_theme", volume: 0.5 },
+          ambience: { id: "ambience/club_room", volume: 0.25 }
         }
       },
       resolveAudio: () => "/audio/found.ogg",
-      listAudioIds: () => ["club_theme", "club_room"]
+      listAudioIds: () => ["music/club_theme", "ambience/club_room"]
     });
 
     expect(valid.errors).toEqual([]);
@@ -979,7 +1024,7 @@ describe("validateScenes", () => {
     })), {
       audioScenes: {
         demo_room: {
-          music: { id: "club_theme" }
+          music: { id: "music/club_theme" }
         },
         bad_refs: {
           music: { id: "missing_theme" },
@@ -987,13 +1032,43 @@ describe("validateScenes", () => {
         }
       },
       resolveAudio: (id) => (id.startsWith("missing") ? null : "/audio/found.ogg"),
-      listAudioIds: () => ["club_theme", "club_room"]
+      listAudioIds: () => ["music/club_theme", "ambience/club_room"]
     });
 
     expectMessage(invalid.errors, 'audioScene("clubhose") has no preset');
     expectMessage(invalid.errors, "audioScene() transition must be at least 0");
     expectMessage(invalid.warnings, 'audioScene("bad_refs") music("missing_theme") has no audio asset yet');
     expectMessage(invalid.warnings, 'audioScene("bad_refs") ambience("missing_room") has no audio asset yet');
+  });
+
+  it("suggests known phone apps, gallery entries, tags, and social posts", () => {
+    const result = validateScenes(registryOf(scene({
+      id: "phone_authoring_typo_scene",
+      cast: ["me", "alex"],
+      script: [
+        stage("irl"),
+        phoneApps(["galery"]),
+        phoneNotify("socal", { text: "new post" }),
+        openPhone("irl"),
+        saveGalleryImage("alex_selfie", "portraits/demo_portrait", { tags: ["Friends"] }),
+        saveGalleryImage("alex_group", "portraits/demo_portrait", { tags: ["friends"] }),
+        removeGalleryImage("alex_slefie"),
+        socialPost("alex_first_post", { poster: "alex", text: "hello" }),
+        socialLike("alex_frist_post")
+      ]
+    })));
+
+    expectMessage(result.errors, 'phoneApps() uses unknown phone app "galery"');
+    expectMessage(result.errors, 'Did you mean "gallery"');
+    expectMessage(result.errors, 'phoneNotify() uses unknown phone app "socal"');
+    expectMessage(result.errors, 'Did you mean "social"');
+    expectMessage(result.errors, 'openPhone() uses unknown phone app "irl"');
+    expectMessage(result.warnings, 'gallery tag "Friends" only differs by case from "friends"');
+    expectMessage(result.warnings, 'gallery tag "friends" only differs by case from "Friends"');
+    expectMessage(result.warnings, 'removeGalleryImage("alex_slefie") does not match any saveGalleryImage() id');
+    expectMessage(result.warnings, 'Did you mean "alex_selfie"');
+    expectMessage(result.warnings, 'socialLike("alex_frist_post") does not match any socialPost() id');
+    expectMessage(result.warnings, 'Did you mean "alex_first_post"');
   });
 
   it("routes demo, prototype, and test scene findings into testWarnings", () => {

@@ -1,6 +1,7 @@
 # Dependencies and build output
 node_modules/
 dist/
+src-tauri/target/
 
 # Local/private material
 archive/
@@ -27,6 +28,7 @@ src/game/assets/sprites/**
 # Local dev logs
 *.log
 vite-vn*.log
+test-results/
 
 # Local environment and secrets
 .env

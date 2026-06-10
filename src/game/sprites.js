@@ -30,13 +30,13 @@ const EXPRESSION_ALIASES = {
 };
 
 /**
- * Normalizes a name for lookup: lowercase, hyphens become underscores.
+ * Keeps authored sprite layer ids exact while tolerating nullish recipe fields.
  *
- * @param {string} name - Candidate id.
- * @returns {string} Normalized id.
+ * @param {unknown} name - Authored layer id.
+ * @returns {string} Exact string id.
  */
-function normalize(name) {
-  return String(name ?? "").toLowerCase().replace(/-/g, "_");
+function exactId(name) {
+  return String(name ?? "");
 }
 
 /**
@@ -77,9 +77,9 @@ function spriteUrl(modules, character, file, subdir = "") {
  */
 function normalizeConditionList(value) {
   if (Array.isArray(value)) {
-    return value.map(normalize);
+    return value.map(exactId);
   }
-  return value == null ? [] : [normalize(value)];
+  return value == null ? [] : [exactId(value)];
 }
 
 /**
@@ -133,12 +133,12 @@ function expressionFile(entry, expression) {
     return null;
   }
   const expressions = entry.layers?.emotions ?? entry.expressions ?? {};
-  const key = normalize(expression);
+  const key = exactId(expression);
   if (expressions[key]) {
     return expressions[key];
   }
   for (const alt of EXPRESSION_ALIASES[key] ?? []) {
-    const file = expressions[normalize(alt)];
+    const file = expressions[exactId(alt)];
     if (file) {
       return file;
     }
@@ -158,7 +158,7 @@ function fileForLayer(entry, descriptor, key) {
   if (descriptor.source === "emotions") {
     return expressionFile(entry, key);
   }
-  return entry.layers?.[descriptor.source]?.[normalize(key)] ?? null;
+  return entry.layers?.[descriptor.source]?.[exactId(key)] ?? null;
 }
 
 /**
@@ -175,7 +175,7 @@ function shouldIncludeLayer(descriptor, context) {
       return false;
     }
   }
-  const outfit = normalize(context.outfit);
+  const outfit = exactId(context.outfit);
   const onlyOutfits = normalizeConditionList(descriptor.onlyOutfit);
   if (onlyOutfits.length && !onlyOutfits.includes(outfit)) {
     return false;

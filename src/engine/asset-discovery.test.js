@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  assetIdFromPathText,
   imageIdsFromPath,
   buildAssetDiscovery,
-  buildAssetRegistry,
-  normalizeAssetId
+  buildAssetRegistry
 } from "./asset-discovery.js";
 import {
   IMAGE_ASSETS,
@@ -21,28 +21,29 @@ const buildImageRegistry = (modules, aliases = {}) => buildAssetRegistry(modules
 });
 
 describe("image asset discovery", () => {
-  it("normalizes image ids from filenames and folders", () => {
-    expect(normalizeAssetId("Backgrounds/Demo Home/Living Room Day.png")).toBe("backgrounds_demo_home_living_room_day");
+  it("preserves exact image ids from filenames and folders", () => {
+    expect(assetIdFromPathText("Backgrounds/Demo Home/Living Room Day.png")).toBe("Backgrounds/Demo Home/Living Room Day");
     expect(imageIdsFromPath("../assets/backgrounds/demo home/living room day.png")).toEqual([
-      "backgrounds_demo_home_living_room_day",
-      "demo_home_living_room_day",
-      "living_room_day"
+      "backgrounds/demo home/living room day",
+      "demo home/living room day",
+      "living room day"
     ]);
   });
 
-  it("builds full ids while omitting ambiguous short aliases", () => {
+  it("builds exact path ids while omitting ambiguous short ids", () => {
     const discovery = buildImageDiscovery({
       "../assets/backgrounds/demo home/living room day.png": "/assets/home-living.png",
       "../assets/backgrounds/demo office/living room day.png": "/assets/office-living.png"
     });
     const registry = discovery.assets;
 
-    expect(registry.backgrounds_demo_home_living_room_day).toBe("/assets/home-living.png");
-    expect(registry.backgrounds_demo_office_living_room_day).toBe("/assets/office-living.png");
-    expect(registry.living_room_day).toBeUndefined();
-    expect(discovery.ambiguities.living_room_day).toEqual([
-      "backgrounds_demo_home_living_room_day",
-      "backgrounds_demo_office_living_room_day"
+    expect(registry["backgrounds/demo home/living room day"]).toBe("/assets/home-living.png");
+    expect(registry["demo home/living room day"]).toBe("/assets/home-living.png");
+    expect(registry["backgrounds/demo office/living room day"]).toBe("/assets/office-living.png");
+    expect(registry["living room day"]).toBeUndefined();
+    expect(discovery.ambiguities["living room day"]).toEqual([
+      "backgrounds/demo home/living room day",
+      "backgrounds/demo office/living room day"
     ]);
   });
 
@@ -54,9 +55,9 @@ describe("image asset discovery", () => {
     });
 
     expect(discovery.ambiguities.shared).toEqual([
-      "backgrounds_alpha_room_shared",
-      "backgrounds_middle_room_shared",
-      "backgrounds_zeta_room_shared"
+      "backgrounds/alpha room/shared",
+      "backgrounds/middle room/shared",
+      "backgrounds/zeta room/shared"
     ]);
   });
 
@@ -64,11 +65,11 @@ describe("image asset discovery", () => {
     const registry = buildImageRegistry({
       "../assets/scenes/001/demo image.png": "/assets/demo-image.png"
     }, {
-      demo_image: "scenes_001_demo_image",
+      "demo image": "scenes/001/demo image",
       missing_alias: "missing_target"
     });
 
-    expect(registry.demo_image).toBe("/assets/demo-image.png");
+    expect(registry["demo image"]).toBe("/assets/demo-image.png");
     expect(registry.missing_alias).toBeUndefined();
   });
 
@@ -88,7 +89,8 @@ describe("image asset discovery", () => {
       "../assets/backgrounds/room.png": "/assets/room.png"
     });
 
-    expect(registry.backgrounds_room_old).toBeUndefined();
-    expect(registry.backgrounds_room).toBe("/assets/room.png");
+    expect(registry["backgrounds/room OLD"]).toBeUndefined();
+    expect(registry["backgrounds/room"]).toBe("/assets/room.png");
+    expect(registry.room).toBe("/assets/room.png");
   });
 });

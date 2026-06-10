@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
+  assetIdFromPathText,
   audioIdsFromPath,
   buildAssetDiscovery,
-  buildAssetRegistry,
-  normalizeAssetId
+  buildAssetRegistry
 } from "./asset-discovery.js";
 import {
   AUDIO_ASSETS,
@@ -21,27 +21,27 @@ const buildAudioRegistry = (modules, aliases = {}) => buildAssetRegistry(modules
 });
 
 describe("audio asset discovery", () => {
-  it("normalizes audio ids from filenames and folders", () => {
-    expect(normalizeAssetId("Music/Warm Morning.ogg")).toBe("music_warm_morning");
+  it("preserves exact audio ids from filenames and folders", () => {
+    expect(assetIdFromPathText("Music/Warm Morning.ogg")).toBe("Music/Warm Morning");
     expect(audioIdsFromPath("../assets/audio/music/Warm Morning.ogg")).toEqual([
-      "music_warm_morning",
-      "warm_morning"
+      "music/Warm Morning",
+      "Warm Morning"
     ]);
   });
 
-  it("builds full ids while omitting ambiguous short aliases", () => {
+  it("builds exact path ids while omitting ambiguous short ids", () => {
     const discovery = buildAudioDiscovery({
       "../assets/audio/music/warm morning.ogg": "/assets/warm-theme.ogg",
       "../assets/audio/ambience/warm morning.wav": "/assets/warm-room.wav"
     });
     const registry = discovery.assets;
 
-    expect(registry.music_warm_morning).toBe("/assets/warm-theme.ogg");
-    expect(registry.ambience_warm_morning).toBe("/assets/warm-room.wav");
-    expect(registry.warm_morning).toBeUndefined();
-    expect(discovery.ambiguities.warm_morning).toEqual([
-      "ambience_warm_morning",
-      "music_warm_morning"
+    expect(registry["music/warm morning"]).toBe("/assets/warm-theme.ogg");
+    expect(registry["ambience/warm morning"]).toBe("/assets/warm-room.wav");
+    expect(registry["warm morning"]).toBeUndefined();
+    expect(discovery.ambiguities["warm morning"]).toEqual([
+      "ambience/warm morning",
+      "music/warm morning"
     ]);
   });
 
@@ -53,9 +53,9 @@ describe("audio asset discovery", () => {
     });
 
     expect(discovery.ambiguities.shared).toEqual([
-      "alpha_shared",
-      "middle_shared",
-      "zeta_shared"
+      "alpha/shared",
+      "middle/shared",
+      "zeta/shared"
     ]);
   });
 
@@ -63,11 +63,11 @@ describe("audio asset discovery", () => {
     const registry = buildAudioRegistry({
       "../assets/audio/music/theme.ogg": "/assets/theme.ogg"
     }, {
-      main_theme: "music_theme",
+      theme: "music/theme",
       missing_alias: "missing_target"
     });
 
-    expect(registry.main_theme).toBe("/assets/theme.ogg");
+    expect(registry.theme).toBe("/assets/theme.ogg");
     expect(registry.missing_alias).toBeUndefined();
   });
 
@@ -77,8 +77,9 @@ describe("audio asset discovery", () => {
       "../assets/audio/sfx/door slam.wav": "/assets/door.wav"
     });
 
-    expect(registry.sfx_door_slam_old).toBeUndefined();
-    expect(registry.sfx_door_slam).toBe("/assets/door.wav");
+    expect(registry["sfx/door slam OLD"]).toBeUndefined();
+    expect(registry["sfx/door slam"]).toBe("/assets/door.wav");
+    expect(registry["door slam"]).toBe("/assets/door.wav");
   });
 
   it("exposes the discovered runtime registry for validators and playback", () => {
