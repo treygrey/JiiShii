@@ -54,6 +54,7 @@ import {
 } from "./commands.js";
 import { createInitialState } from "./state.js";
 import { SceneRunner } from "./runner.js";
+import { BUILTIN_SURFACE_MODULES } from "./surface-modules.js";
 
 /**
  * Creates a renderer test double that satisfies the renderer contract and
@@ -826,6 +827,48 @@ describe("SceneRunner surface stack", () => {
     );
   });
 
+  it("runs module-owned state commands from any mounted story surface", () => {
+    const { runner, renderers } = makeRunner([
+      stage("irl"),
+      saveGalleryImage("phone_photo", "phone_photo_asset")
+    ]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.executeCommand(runner.scene.script[1]);
+
+    expect(runner.state.currentSurface).toBe("irl");
+    expect(runner.state.visuals.gallery.images).toEqual([
+      expect.objectContaining({ id: "phone_photo", image: "phone_photo_asset" })
+    ]);
+    expect(renderers.gallery.renderGalleryState).toHaveBeenCalledWith(
+      expect.objectContaining({
+        images: [expect.objectContaining({ id: "phone_photo" })]
+      }),
+      expect.objectContaining({ instant: false })
+    );
+  });
+
+  it("does not run module-owned render commands while their surface is unmounted", () => {
+    const onGalleryImage = vi.fn();
+    const customSurface = gallerySurfaceModule({ onGalleryImage });
+    const renderers = {
+      ...fakeRenderers(),
+      gallery: {
+        ...fakeRenderer("gallery", ["galleryImage", "choice", "transition"], ["renderGalleryState"]),
+        renderGalleryState: vi.fn()
+      }
+    };
+    const { runner } = makeRunner([stage("irl")], {
+      renderers,
+      surfaceModules: [BUILTIN_SURFACE_MODULES[0], customSurface]
+    });
+
+    runner.executeCommand(runner.scene.script[0]);
+
+    expect(runner.executeSurfaceCommand(galleryImage("hidden_image"))).toBe(false);
+    expect(onGalleryImage).not.toHaveBeenCalled();
+  });
+
   it("replays a custom surface command through the instant module handler", () => {
     const onGalleryImage = vi.fn();
     const customSurface = gallerySurfaceModule({ onGalleryImage });
@@ -858,6 +901,29 @@ describe("SceneRunner surface stack", () => {
       { images: [{ id: "demo_image" }], selected: "demo_image" },
       { instant: true }
     );
+  });
+
+  it("replays module-owned phone notifications without showing toasts", () => {
+    const { runner, renderers } = makeRunner([
+      stage("irl"),
+      socialPost("notified_post", {
+        poster: "alex",
+        text: "hello",
+        notify: true
+      }),
+      say("alex", "after notification")
+    ]);
+
+    runner.state.currentCommandIndex = 2;
+    runner.replaySceneContextToCurrentCommand();
+
+    expect(runner.state.visuals.social.posts).toEqual([
+      expect.objectContaining({ id: "notified_post", poster: "alex" })
+    ]);
+    expect(runner.state.visuals.phone.notifications).toEqual([
+      expect.objectContaining({ id: "social:notified_post", app: "social", read: false })
+    ]);
+    expect(renderers.irl.showPhoneToast).not.toHaveBeenCalled();
   });
 
   it("throws clearly when staging an unregistered surface", () => {

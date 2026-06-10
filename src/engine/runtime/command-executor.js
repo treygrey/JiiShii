@@ -1,6 +1,6 @@
 import { applyVarMutations, rollInt } from "../state.js";
-import { readSurfaceStateSlice } from "../surface-modules.js";
 import { setBackgroundState } from "../visual-state.js";
+import { buildHandlerContext } from "./handler-context.js";
 
 /**
  * Runs commands until the runner reaches a blocked/readable beat.
@@ -74,6 +74,12 @@ export function executeCommand(runner, command) {
     return;
   }
 
+  if (command.type === "openPhone") {
+    runner.openPhoneApp(command.app ?? "home");
+    runner.state.currentCommandIndex += 1;
+    return;
+  }
+
   if (command.type === "label") {
     runner.state.currentCommandIndex += 1;
     return;
@@ -90,14 +96,6 @@ export function executeCommand(runner, command) {
       duration: command.duration
     });
     runner.state.currentCommandIndex += 1;
-    return;
-  }
-
-  if (
-    runner.applyPhoneCommand(command) ||
-    runner.applyGalleryCommand(command) ||
-    runner.applySocialCommand(command)
-  ) {
     return;
   }
 
@@ -234,23 +232,19 @@ export function executeCommand(runner, command) {
  * @returns {boolean} True when a surface handler ran.
  */
 export function executeSurfaceCommand(runner, command, { instant = false } = {}) {
-  const surface = runner.surfaceRegistry.get(runner.state.currentSurface);
+  const ownerId = runner.surfaceRegistry.commandOwners?.get(command.type);
+  const surface = ownerId ? runner.surfaceRegistry.get(ownerId) : null;
+  const metadata = surface?.commands?.[command.type];
+  if (metadata?.needsSurface === true && runner.state.currentSurface !== surface?.id) {
+    return false;
+  }
   const handler = surface?.handlers?.[command.type];
-  const run = instant ? handler?.instant : handler?.run;
+  const run = instant ? handler?.instant ?? handler?.run : handler?.run;
   if (!run) {
     return false;
   }
 
-  run({
-    runner,
-    command,
-    renderer: runner.renderers?.[surface.id],
-    compositor: runner.compositor,
-    state: runner.state,
-    surfaceState: readSurfaceStateSlice(runner.state, surface.id),
-    characters: runner.characters,
-    instant
-  });
+  run(buildHandlerContext(runner, surface, command, { instant }));
   return true;
 }
 

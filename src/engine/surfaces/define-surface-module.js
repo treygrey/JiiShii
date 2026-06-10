@@ -52,9 +52,11 @@ export function defineSurfaceModule(moduleDefinition) {
     `Surface module "${id}": renderer.projections`
   );
 
+  const kind = normalizeSurfaceKind(id, moduleDefinition.kind);
+
   return {
     id,
-    kind: normalizeSurfaceKind(id, moduleDefinition.kind),
+    kind,
     baseline: moduleDefinition.baseline === true,
     phoneApp: normalizePhoneAppMetadata(id, moduleDefinition.phoneApp),
     renderer: {
@@ -62,7 +64,7 @@ export function defineSurfaceModule(moduleDefinition) {
       commands: rendererCommands,
       projections: rendererProjections
     },
-    commands: normalizeSurfaceCommands(id, moduleDefinition.commands ?? {}),
+    commands: normalizeSurfaceCommands(id, kind, moduleDefinition.commands ?? {}),
     state: normalizeStateLifecycle(id, moduleDefinition.state),
     handlers: normalizeCommandHandlers(id, moduleDefinition.handlers ?? {})
   };
@@ -127,10 +129,11 @@ function normalizeStringList(value, label) {
  * Normalizes command metadata contributed by one surface module.
  *
  * @param {string} surfaceId - Owning surface id.
+ * @param {"story"|"app"} surfaceKind - Surface behavior category.
  * @param {Record<string, object>} commands - Command metadata by type.
  * @returns {Record<string, object>} Normalized command metadata.
  */
-function normalizeSurfaceCommands(surfaceId, commands) {
+function normalizeSurfaceCommands(surfaceId, surfaceKind, commands) {
   if (!commands || typeof commands !== "object" || Array.isArray(commands)) {
     throw new Error(`Surface module "${surfaceId}": commands must be an object.`);
   }
@@ -152,6 +155,10 @@ function normalizeSurfaceCommands(surfaceId, commands) {
         throw new Error(
           `Surface module "${surfaceId}": command "${type}" declares surface "${normalized.surface}".`
         );
+      }
+
+      if (surfaceKind === "app" && normalized.blocks === true) {
+        throw new Error(`Surface module "${surfaceId}": app command "${type}" cannot block story progress.`);
       }
 
       return [type, normalized];

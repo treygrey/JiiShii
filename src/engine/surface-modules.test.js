@@ -151,7 +151,23 @@ describe("surface module harness", () => {
     });
 
     expect(() => surfaceCommandMeta([BUILTIN_SURFACE_MODULES[1], phoneSurface])).toThrow(
-      /duplicate command type "thread"/
+      /command "thread" is owned by both "texting" and "phone"/
+    );
+  });
+
+  it("rejects blocking commands on app-kind surfaces", () => {
+    expect(() => defineSurfaceModule({
+      id: "gallery",
+      kind: "app",
+      renderer: {
+        commands: ["galleryBeat"],
+        projections: []
+      },
+      commands: {
+        galleryBeat: { blocks: true }
+      }
+    })).toThrow(
+      /app command "galleryBeat" cannot block story progress/
     );
   });
 

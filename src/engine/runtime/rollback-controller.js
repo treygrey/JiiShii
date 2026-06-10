@@ -181,14 +181,6 @@ export function replaySceneContextToCurrentCommand(runner) {
       continue;
     }
 
-    if (
-      runner.applyPhoneCommand(command) ||
-      runner.applyGalleryCommand(command) ||
-      runner.applySocialCommand(command)
-    ) {
-      continue;
-    }
-
     switch (command.type) {
       case "surface":
         runner.setSurface(command.id);

@@ -33,17 +33,7 @@ export const BASE_COMMAND_META = {
   setVar: { kind: "state" },
   setFlag: { kind: "state" },
   roll: { kind: "state" },
-  phoneButton: { kind: "state" },
-  phoneApps: { kind: "state" },
-  phoneNotify: { kind: "state" },
-  clearPhoneNotify: { kind: "state" },
   openPhone: { kind: "stage" },
-  setWallpaper: { kind: "state" },
-  saveGalleryImage: { kind: "state" },
-  removeGalleryImage: { kind: "state" },
-  socialPost: { kind: "state" },
-  socialFollow: { kind: "state" },
-  socialLike: { kind: "state" },
 
   // --- Rendering: surface-agnostic (compositor-owned) ---
   background: { kind: "render", surface: null, needsSurface: false },

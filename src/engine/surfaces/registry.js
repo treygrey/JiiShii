@@ -16,7 +16,29 @@ export function createSurfaceRegistry(modules = BUILTIN_SURFACE_MODULES) {
     }
     registry.set(surface.id, surface);
   }
+  registry.commandOwners = createSurfaceCommandOwnerIndex(registry);
   return registry;
+}
+
+/**
+ * Creates a strict command-owner index for registered surface modules.
+ *
+ * @param {Map<string, object>} registry - Surface registry.
+ * @returns {Map<string, string>} Command type to owning surface id.
+ */
+export function createSurfaceCommandOwnerIndex(registry) {
+  const owners = new Map();
+  for (const surface of registry.values()) {
+    for (const type of Object.keys(surface.commands ?? {})) {
+      if (owners.has(type)) {
+        throw new Error(
+          `Surface module registry: command "${type}" is owned by both "${owners.get(type)}" and "${surface.id}".`
+        );
+      }
+      owners.set(type, surface.id);
+    }
+  }
+  return owners;
 }
 
 /**

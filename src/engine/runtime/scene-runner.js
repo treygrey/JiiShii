@@ -45,9 +45,6 @@ import {
   syncVisualState
 } from "./projection.js";
 import {
-  applyGalleryCommand,
-  applyPhoneCommand,
-  applySocialCommand,
   createPhoneAppMetadata,
   followSocialPoster,
   getPhoneReturnSurface,
@@ -1405,36 +1402,6 @@ export class SceneRunner {
    */
   goBackPhoneApp() {
     goBackPhoneApp(this);
-  }
-
-  /**
-   * Applies a phone state command.
-   *
-   * @param {object} command - Phone command.
-   * @returns {boolean} True when handled.
-   */
-  applyPhoneCommand(command) {
-    return applyPhoneCommand(this, command);
-  }
-
-  /**
-   * Applies a gallery state command.
-   *
-   * @param {object} command - Gallery command.
-   * @returns {boolean} True when handled.
-   */
-  applyGalleryCommand(command) {
-    return applyGalleryCommand(this, command);
-  }
-
-  /**
-   * Applies a social feed state command.
-   *
-   * @param {object} command - Social command.
-   * @returns {boolean} True when handled.
-   */
-  applySocialCommand(command) {
-    return applySocialCommand(this, command);
   }
 
   /**

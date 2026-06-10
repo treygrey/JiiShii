@@ -1,35 +1,10 @@
 import { defineSurfaceModule, SHARED_RENDERER_COMMANDS } from "../define-surface-module.js";
 import {
-  applyHideAllCharacters,
-  applyHideCharacter,
-  applyClearIrlImage,
-  applyClearIrlStage,
-  applyShowCharacter,
-  applyShowIrlImage,
-  applyIrlImageTransform,
-  cloneSpriteState,
-  createSpriteState,
-  applySpriteExpression,
-  applySpriteTransform,
-  normalizeSpriteState
-} from "../../sprite-state.js";
-import {
-  appendStreamChat,
-  appendTextMessages,
-  cloneVisualState,
-  createVisualState,
-  normalizeVisualState,
-  setStreamLayoutState,
-  setStreamTitleState,
-  setStreamWindowState,
-  setTextingThread
-} from "../../visual-state.js";
-import {
   createGalleryState,
-  createSocialState,
   normalizeGalleryState,
   normalizePhoneState,
-  normalizeSocialState
+  removeGalleryImageState,
+  saveGalleryImageState
 } from "../../phone-state.js";
 
 /**
@@ -76,7 +51,10 @@ export const GALLERY_SURFACE = defineSurfaceModule({
     commands: [...SHARED_RENDERER_COMMANDS],
     projections: ["renderGalleryState"]
   },
-  commands: {},
+  commands: {
+    saveGalleryImage: { kind: "state", surface: "gallery", needsSurface: false },
+    removeGalleryImage: { kind: "state", surface: "gallery", needsSurface: false }
+  },
   state: {
     create: createGalleryState,
     normalize: normalizeGalleryState,
@@ -87,5 +65,33 @@ export const GALLERY_SURFACE = defineSurfaceModule({
         instant: context.instant
       });
     }
+  },
+  handlers: {
+    saveGalleryImage: handleGalleryCommand,
+    removeGalleryImage: handleGalleryCommand
   }
 });
+
+/**
+ * Handles Gallery app state commands.
+ *
+ * @param {object} context - Surface handler context.
+ * @returns {void}
+ */
+function handleGalleryCommand(context) {
+  const { runner, command } = context;
+  const gallery = runner.state.visuals.gallery;
+  if (command.type === "saveGalleryImage") {
+    saveGalleryImageState(gallery, command);
+    context.projectSurface();
+    context.updatePhoneCheckpoint();
+    context.advance();
+    return;
+  }
+  if (command.type === "removeGalleryImage") {
+    removeGalleryImageState(gallery, command.id);
+    context.projectSurface();
+    context.updatePhoneCheckpoint();
+    context.advance();
+  }
+}
