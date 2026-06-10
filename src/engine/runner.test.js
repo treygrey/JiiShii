@@ -5,6 +5,8 @@ import {
   stage,
   open,
   close,
+  label,
+  jump,
   transition,
   set,
   mark,
@@ -253,6 +255,28 @@ function makeRunner(script, options = {}) {
   return { runner, renderers, compositor, audio, scene: testScene };
 }
 
+/**
+ * Reads the deterministic state fields replay reconstruction must preserve.
+ *
+ * @param {SceneRunner} runner - Runner to inspect.
+ * @returns {object} Comparable state slice.
+ */
+function comparableReplayState(runner) {
+  return structuredClone({
+    currentSurface: runner.state.currentSurface,
+    surfaceStack: runner.state.surfaceStack,
+    vars: runner.state.vars,
+    audio: runner.state.audio,
+    sprites: runner.state.sprites,
+    visuals: {
+      background: runner.state.visuals.background,
+      texting: runner.state.visuals.texting,
+      streaming: runner.state.visuals.streaming,
+      irl: runner.state.visuals.irl
+    }
+  });
+}
+
 beforeEach(() => {
   const store = new Map();
   vi.stubGlobal("localStorage", {
@@ -491,6 +515,43 @@ describe("SceneRunner surface stack", () => {
 
     expect(runner.surfaceStack).toEqual(["streaming"]);
     expect(runner.state.currentSurface).toBe("streaming");
+  });
+
+  it("backs from an app root to phone Home before returning to the story surface", () => {
+    const { runner } = makeRunner([stage("streaming")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.openPhoneApp("texting");
+
+    expect(runner.surfaceStack).toEqual(["streaming", "texting"]);
+    expect(runner.isTextingInboxMode()).toBe(true);
+
+    runner.goBackPhoneApp();
+
+    expect(runner.surfaceStack).toEqual(["streaming", "phone_home"]);
+    expect(runner.state.currentSurface).toBe("phone_home");
+    expect(runner.state.visuals.phone.currentApp).toBe("home");
+
+    runner.goBackPhoneApp();
+
+    expect(runner.surfaceStack).toEqual(["streaming"]);
+    expect(runner.state.currentSurface).toBe("streaming");
+    expect(runner.isPhoneOpen()).toBe(false);
+  });
+
+  it("backs to Home instead of walking through previously opened apps", () => {
+    const { runner } = makeRunner([stage("irl")]);
+
+    runner.executeCommand(runner.scene.script[0]);
+    runner.openPhoneApp("social");
+    runner.openPhoneApp("gallery");
+
+    expect(runner.surfaceStack).toEqual(["irl", "gallery"]);
+
+    runner.goBackPhoneApp();
+
+    expect(runner.surfaceStack).toEqual(["irl", "phone_home"]);
+    expect(runner.state.visuals.phone.currentApp).toBe("home");
   });
 
   it("adds received text notifications to the conversation list as actionable rows", () => {
@@ -924,6 +985,21 @@ describe("SceneRunner surface stack", () => {
       expect.objectContaining({ id: "social:notified_post", app: "social", read: false })
     ]);
     expect(renderers.irl.showPhoneToast).not.toHaveBeenCalled();
+  });
+
+  it("throws clearly when replay reconstruction cannot advance", () => {
+    const { runner } = makeRunner([
+      stage("irl"),
+      label("loop"),
+      jump("loop"),
+      say("alex", "unreachable")
+    ]);
+
+    runner.state.currentCommandIndex = 4;
+
+    expect(() => runner.replaySceneContextToCurrentCommand()).toThrow(
+      /Replay guard tripped in scene "runner_test_scene" while reconstructing command 4\. Stuck at 2\./
+    );
   });
 
   it("throws clearly when staging an unregistered surface", () => {
@@ -1453,6 +1529,29 @@ describe("SceneRunner pause command", () => {
     expect(compositor.showDialogue).toHaveBeenCalledTimes(2);
     expect(runner.state.currentCommandIndex).toBe(1);
   });
+
+  it("defers a completed pause while phone navigation is open", () => {
+    vi.useFakeTimers();
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      pause(1000),
+      say("alex", "after")
+    ]);
+
+    runner.start();
+    runner.openPhoneApp("home");
+    vi.advanceTimersByTime(1000);
+
+    expect(runner.pauseReady).toBe(true);
+    expect(compositor.showDialogue).not.toHaveBeenCalled();
+    expect(runner.state.currentCommandIndex).toBe(1);
+
+    runner.returnToStorySurface();
+
+    expect(runner.pauseReady).toBe(false);
+    expect(compositor.showDialogue).toHaveBeenCalledOnce();
+    expect(runner.state.currentCommandIndex).toBe(2);
+  });
 });
 
 describe("SceneRunner advance policy", () => {
@@ -1478,6 +1577,34 @@ describe("SceneRunner advance policy", () => {
     expect(compositor.showDialogue).toHaveBeenCalledTimes(2);
     expect(compositor.showDialogue.mock.calls[1][0].message).toBe("second");
     expect(runner.state.currentCommandIndex).toBe(3);
+  });
+
+  it("auto-surfaces a following decision after applying simple state commands", () => {
+    const compositor = fakeCompositor();
+    compositor.showDialogue.mockImplementation((command, speaker, { onComplete }) => {
+      onComplete();
+    });
+    const { runner, renderers } = makeRunner([
+      stage("irl"),
+      say("alex", "first"),
+      label("decision"),
+      set("saw_line", true),
+      choice([{ text: "Continue", goto: "done" }]),
+      label("done"),
+      say("alex", "after")
+    ], { compositor });
+
+    runner.start();
+
+    expect(runner.state.vars.saw_line).toBe(true);
+    expect(runner.state.currentCommandIndex).toBe(4);
+    expect(runner.blockingInput).toBe(true);
+    expect(renderers.irl.showChoice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        options: [expect.objectContaining({ text: "Continue" })]
+      }),
+      expect.anything()
+    );
   });
 });
 
@@ -1969,6 +2096,47 @@ describe("SceneRunner rollback sprite state", () => {
     });
   });
 
+  it("keeps play and session saves working when localStorage rejects writes", () => {
+    const consoleWarning = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { runner, compositor, renderers } = makeRunner([
+      stage("irl"),
+      say("alex", "first"),
+      say("alex", "second")
+    ], {
+      storageKeys: {
+        save: "blocked-save",
+        autosave: "blocked-autosave",
+        slotPrefix: "blocked-slot-"
+      }
+    });
+    localStorage.setItem.mockImplementation(() => {
+      throw new Error("storage blocked");
+    });
+
+    expect(() => runner.start()).not.toThrow();
+    expect(runner.storageFallbackWarned).toBe(true);
+    expect(consoleWarning).toHaveBeenCalledOnce();
+
+    completeDialogue(compositor, 0);
+    expect(() => runner.advance()).not.toThrow();
+    const result = runner.save({ announce: true, slot: 1 });
+
+    expect(result).toEqual(expect.objectContaining({
+      ok: true,
+      kind: "snapshot",
+      durable: false,
+      message: "Saved for this session"
+    }));
+    expect(renderers.irl.setSaveStatus).toHaveBeenCalledWith("Saved for this session");
+
+    runner.state.currentCommandIndex = 99;
+    const loadResult = runner.load({ slot: 1 });
+
+    expect(loadResult).toEqual(expect.objectContaining({ ok: true, kind: "snapshot" }));
+    expect(runner.state.currentCommandIndex).toBe(2);
+    consoleWarning.mockRestore();
+  });
+
   it("loads a manual save-anywhere slot back to the exact saved beat", () => {
     const { runner, compositor } = makeRunner([
       stage("irl"),
@@ -2357,6 +2525,32 @@ describe("SceneRunner rollback sprite state", () => {
       }),
       expect.objectContaining({ instant: true })
     );
+  });
+
+  it("matches live state when replaying a mixed command prefix", () => {
+    const script = [
+      stage("irl"),
+      background("tour room day", { transition: "cut" }),
+      show("alex", { outfit: "casual", expression: "neutral", side: "left" }),
+      image("photo", "tour_gallery_selfie", { at: "right", scale: 0.75 }),
+      music("quiet_theme"),
+      ambience("room_tone"),
+      set("visited_room", true),
+      move("alex", { at: "center", scale: 1.1 }),
+      moveImage("photo", { alpha: 0.6 }),
+      hide("alex"),
+      stopMusic(),
+      stopAmbience()
+    ];
+    const live = makeRunner(script);
+
+    live.runner.start();
+
+    const replay = makeRunner(script);
+    replay.runner.state.currentCommandIndex = live.runner.state.currentCommandIndex;
+    replay.runner.replaySceneContextToCurrentCommand();
+
+    expect(comparableReplayState(replay.runner)).toEqual(comparableReplayState(live.runner));
   });
 
   it("snapshots the visible beat index even when presentation completes immediately", () => {

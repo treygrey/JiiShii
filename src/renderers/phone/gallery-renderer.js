@@ -100,11 +100,7 @@ export class GalleryRenderer {
    * @returns {void}
    */
   renderGalleryState(gallery, { phone } = {}) {
-    this.shell.setBackHandler(this.activeTag ? () => {
-      this.activeTag = null;
-      this.renderGalleryState(gallery, { phone: this.runner?.state?.visuals?.phone });
-      return true;
-    } : null);
+    this.shell.setBackHandler(this.createRootBackHandler(gallery));
     this.clearHeaderAction();
     this.shell.renderPhoneChrome(phone);
     if (!this.shell.content) {
@@ -124,6 +120,31 @@ export class GalleryRenderer {
     `;
     this.bindSectionControls(gallery);
     this.bindImageControls(images);
+  }
+
+  /**
+   * Creates the Gallery app-root back handler.
+   *
+   * @param {object} gallery - Gallery state.
+   * @returns {Function|null} Back handler, or null at app root.
+   */
+  createRootBackHandler(gallery) {
+    if (this.activeTag) {
+      return () => {
+        this.activeTag = null;
+        this.renderGalleryState(gallery, { phone: this.runner?.state?.visuals?.phone });
+        return true;
+      };
+    }
+    if (this.activeSection !== "all") {
+      return () => {
+        this.activeSection = "all";
+        this.activeTag = null;
+        this.renderGalleryState(gallery, { phone: this.runner?.state?.visuals?.phone });
+        return true;
+      };
+    }
+    return null;
   }
 
   /**

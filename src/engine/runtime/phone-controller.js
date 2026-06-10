@@ -127,17 +127,12 @@ export function getPhoneReturnSurface(runner) {
  * @returns {void}
  */
 export function openPhoneApp(runner, app = "home", options = {}) {
-  const { fromHistory = false } = options;
   const surfaceId = app === "home" ? "phone_home" : app;
   if (!runner.surfaceRegistry.has(surfaceId)) {
     return;
   }
   const returnSurface = runner.getPhoneReturnSurface() ?? runner.state.currentSurface ?? "texting";
   const topSurface = runner.surfaceStack[runner.surfaceStack.length - 1] ?? null;
-  const previousApp = runner.state.visuals.phone.currentApp ?? "home";
-  if (!fromHistory && runner.isPhoneOpen() && previousApp !== app) {
-    runner.phoneAppHistory.push(previousApp);
-  }
   runner.state.visuals.phone.currentApp = app;
   if (app !== "home") {
     clearPhoneNotification(runner.state.visuals.phone, app);
@@ -165,7 +160,11 @@ export function openPhoneApp(runner, app = "home", options = {}) {
 }
 
 /**
- * Moves to the previous phone app, or closes the phone when history is empty.
+ * Moves phone navigation toward the launcher, then closes from Home.
+ *
+ * App renderers consume their own detail depth before this runs. At this
+ * level, Android-style back should not behave like browser history between
+ * apps: any app root backs to Home, and Home backs to the story surface.
  *
  * @param {object} runner - Scene runner instance.
  * @returns {void}
@@ -174,9 +173,12 @@ export function goBackPhoneApp(runner) {
   if (!runner.isPhoneOpen()) {
     return;
   }
-  const previousApp = runner.phoneAppHistory.pop();
-  if (previousApp) {
-    runner.openPhoneApp(previousApp, { fromHistory: true });
+  const topSurface = runner.surfaceStack[runner.surfaceStack.length - 1] ?? null;
+  const currentApp = topSurface === "phone_home"
+    ? "home"
+    : runner.isPhoneNavigationLayer(topSurface) ? topSurface : runner.state.visuals.phone.currentApp ?? "home";
+  if (currentApp !== "home") {
+    runner.openPhoneApp("home", { fromHistory: true });
     return;
   }
   runner.returnToStorySurface();
@@ -211,6 +213,9 @@ export function returnToStorySurface(runner) {
   runner.setPhoneNavigationSurface(null);
   if (runner.state.currentSurface !== returnSurface && runner.surfaceRegistry.has(returnSurface)) {
     runner.setSurface(returnSurface);
+  }
+  if (runner.pauseReady && runner.isWaitingForPlayer) {
+    runner.completePause();
   }
 }
 

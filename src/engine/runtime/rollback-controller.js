@@ -152,6 +152,20 @@ export function reconstructTo(runner, snap, { preservePersistentPhoneState = tru
 }
 
 /**
+ * Creates a replay reconstruction failure with enough scene context to debug.
+ *
+ * @param {object} runner - Scene runner instance.
+ * @param {number} targetCommandIndex - Command index replay is trying to reach.
+ * @param {number} stuckCommandIndex - Command index that could not advance.
+ * @returns {Error} Replay guard error.
+ */
+function createReplayGuardError(runner, targetCommandIndex, stuckCommandIndex) {
+  return new Error(
+    `Replay guard tripped in scene "${runner.scene?.id ?? "unknown"}" while reconstructing command ${targetCommandIndex}. Stuck at ${stuckCommandIndex}.`
+  );
+}
+
+/**
  * Replays deterministic scene context for rollback reconstruction.
  *
  * @param {object} runner - Scene runner instance.
@@ -171,6 +185,7 @@ export function replaySceneContextToCurrentCommand(runner) {
   let guard = 0;
   while (runner.state.currentCommandIndex < targetCommandIndex && guard < 100000) {
     guard += 1;
+    const previousCommandIndex = runner.state.currentCommandIndex;
     const command = runner.scene.script[runner.state.currentCommandIndex];
 
     if (!command) {
@@ -203,9 +218,21 @@ export function replaySceneContextToCurrentCommand(runner) {
         runner.state.currentCommandIndex += 1;
         break;
       case "label":
+        runner.state.currentCommandIndex += 1;
+        break;
       case "setFlag":
+        runner.state.vars[command.key] = command.value;
+        runner.syncIrlSprites({ instant: true });
+        runner.state.currentCommandIndex += 1;
+        break;
       case "setVar":
+        applyVarMutations(runner.state.vars, { [command.key]: command.value });
+        runner.syncIrlSprites({ instant: true });
+        runner.state.currentCommandIndex += 1;
+        break;
       case "roll":
+        runner.state.vars[command.key] = rollInt(runner.state, command.min, command.max);
+        runner.syncIrlSprites({ instant: true });
         runner.state.currentCommandIndex += 1;
         break;
       case "narration":
@@ -366,6 +393,13 @@ export function replaySceneContextToCurrentCommand(runner) {
         runner.state.currentCommandIndex += 1;
         break;
     }
+
+    if (runner.state.currentCommandIndex === previousCommandIndex) {
+      throw createReplayGuardError(runner, targetCommandIndex, previousCommandIndex);
+    }
+  }
+  if (runner.state.currentCommandIndex < targetCommandIndex) {
+    throw createReplayGuardError(runner, targetCommandIndex, runner.state.currentCommandIndex);
   }
 }
 import {
@@ -378,6 +412,7 @@ import {
 } from "../audio-state.js";
 import { cloneHistoryState } from "../history-state.js";
 import { setSpriteFocus } from "../sprite-state.js";
+import { applyVarMutations, rollInt } from "../state.js";
 import { cloneSurfaceState, createSurfaceState } from "../surface-modules.js";
 import {
   appendStreamChat,

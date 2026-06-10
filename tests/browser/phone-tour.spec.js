@@ -99,7 +99,13 @@ test("phone apps stay above an IRL choice and Messages opens as inbox outside st
   });
   expect(topLayer).toContain("texting-shell");
 
-  await page.getByLabel("Return to story").click();
+  await page.locator(".texting-shell [data-phone-nav='back']").click();
+  await expect(page.locator(".phone-home-shell")).toBeVisible();
+  await expect(page.locator(".irl-choice-overlay")).toHaveCount(1);
+
+  await page.locator(".phone-home-shell [data-phone-nav='back']").click();
+  await expect(page.locator(".phone-home-shell")).toHaveCount(0);
+  await expect(page.locator(".texting-shell")).toHaveCount(0);
   await expect(page.getByRole("option", { name: "I checked the gallery and wallpaper." })).toBeVisible();
 });
 
@@ -158,4 +164,74 @@ test("texting choices survive visiting Home and returning to the active story th
   await expect(page.locator(".texting-shell")).toBeVisible();
   await expect(page.getByRole("button", { name: "The active thread kept its choice." })).toBeVisible();
   await expect(page.getByText("Open Home, look around, then return to this active thread. The choice should still be here.")).toHaveCount(1);
+});
+
+test("browser rollback and roll-forward return to the active tour choice", async ({ page }) => {
+  await startTour(page);
+  await advanceUntilVisible(page, "Gallery checkpoint");
+
+  const beforeRollback = await readRuntime(page);
+  await page.mouse.wheel(0, -900);
+  await expect.poll(() => readRuntime(page).then((state) => state.isRewound)).toBe(true);
+  const rolledBack = await readRuntime(page);
+  expect(rolledBack.currentCommandIndex).toBeLessThan(beforeRollback.currentCommandIndex);
+
+  await page.waitForTimeout(120);
+  await page.mouse.wheel(0, 900);
+  await expect.poll(() => readRuntime(page).then((state) => state.isRewound)).toBe(false);
+  await advanceUntilVisible(page, "Gallery checkpoint");
+  await expect(page.getByRole("option", { name: "I checked the gallery and wallpaper." })).toBeVisible();
+});
+
+test("quick menu save and load restore a blocked choice", async ({ page }) => {
+  page.on("dialog", (dialog) => dialog.accept());
+  await startTour(page);
+  await advanceUntilVisible(page, "Gallery checkpoint");
+
+  await page.locator('[data-q="save"]').click();
+  await expect(page.locator("#saves-overlay")).toBeVisible();
+  await page.locator("#save-grid .save-tile:not(.auto-tile)").first().click();
+  await expect(page.locator("#saves-overlay")).toBeHidden();
+
+  await page.getByRole("option", { name: "I checked the gallery and wallpaper." }).click();
+  await advanceUntilVisible(page, "Social checkpoint");
+
+  await page.locator('[data-q="load"]').click();
+  await expect(page.locator("#saves-overlay")).toBeVisible();
+  await page.locator("#save-grid .save-tile.has-data:not(.auto-tile)").first().click();
+
+  await expect(page.locator("#saves-overlay")).toBeHidden();
+  await expect(page.getByRole("option", { name: "I checked the gallery and wallpaper." })).toBeVisible();
+});
+
+test("keyboard shell shortcuts open overlays and page keys roll beats", async ({ page }) => {
+  await startTour(page);
+  await advanceUntilVisible(page, "Gallery checkpoint");
+
+  await page.keyboard.press("h");
+  await expect(page.locator("#history-overlay")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#history-overlay")).toBeHidden();
+
+  await page.keyboard.press("s");
+  await expect(page.locator("#saves-overlay")).toBeVisible();
+  await expect(page.locator("#saves-title")).toHaveText("Save Game");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#saves-overlay")).toBeHidden();
+
+  await page.keyboard.press("l");
+  await expect(page.locator("#saves-overlay")).toBeVisible();
+  await expect(page.locator("#saves-title")).toHaveText("Load Game");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#saves-overlay")).toBeHidden();
+
+  const beforePageUp = await readRuntime(page);
+  await page.keyboard.press("PageUp");
+  await expect.poll(() => readRuntime(page).then((state) => state.isRewound)).toBe(true);
+  const rewound = await readRuntime(page);
+  expect(rewound.currentCommandIndex).toBeLessThan(beforePageUp.currentCommandIndex);
+
+  await page.waitForTimeout(120);
+  await page.keyboard.press("PageDown");
+  await expect.poll(() => readRuntime(page).then((state) => state.isRewound)).toBe(false);
 });

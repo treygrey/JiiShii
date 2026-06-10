@@ -320,6 +320,7 @@ export class SceneRunner {
     // saves restore the line on screen instead of the next unread command.
     this.activeBeatCommandIndex = null;
     this.pauseTimer = null;
+    this.pauseReady = false;
   }
 
   /**
@@ -626,6 +627,7 @@ export class SceneRunner {
     this.clearPauseTimer();
     const duration = Math.max(0, Number(command.duration ?? 1000));
     this.isWaitingForPlayer = true;
+    this.pauseReady = false;
     this.pauseTimer = globalThis.setTimeout(() => {
       this.completePause();
     }, duration);
@@ -639,9 +641,16 @@ export class SceneRunner {
   completePause() {
     if (!this.isWaitingForPlayer) {
       this.clearPauseTimer();
+      this.pauseReady = false;
+      return;
+    }
+    if (this.isPhoneOpen()) {
+      this.clearPauseTimer();
+      this.pauseReady = true;
       return;
     }
     this.clearPauseTimer();
+    this.pauseReady = false;
     this.isWaitingForPlayer = false;
     this.state.currentCommandIndex += 1;
     this.save();

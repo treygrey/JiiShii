@@ -8,7 +8,76 @@ import {
 } from "../save-format.js";
 import { createInitialState, migrateState } from "../state.js";
 import { cloneSurfaceState, normalizeSurfaceState } from "../surface-modules.js";
-import { readFirstStorage } from "./storage-keys.js";
+
+const FALLBACK_STORAGE = new Map();
+
+/**
+ * Warns once when durable browser storage is unavailable.
+ *
+ * @param {object} runner - Scene runner instance.
+ * @param {unknown} error - Storage failure.
+ * @returns {void}
+ */
+function warnStorageFallback(runner, error) {
+  if (runner.storageFallbackWarned) {
+    return;
+  }
+  runner.storageFallbackWarned = true;
+  console.warn("JiiShii: Browser storage is unavailable; saves are temporary this session.", error);
+  runner.activeRenderer?.setSaveStatus?.("Saves are temporary this session");
+  runner.onLog?.({
+    kind: "storage-warning",
+    message: "Browser storage is unavailable; saves are temporary this session.",
+    error
+  });
+}
+
+/**
+ * Writes save data, falling back to memory if localStorage is unavailable.
+ *
+ * @param {object} runner - Scene runner instance.
+ * @param {string} key - Storage key.
+ * @param {string} value - Serialized save payload.
+ * @returns {boolean} True when the write reached localStorage.
+ */
+function writeStorage(runner, key, value) {
+  try {
+    localStorage.setItem(key, value);
+    FALLBACK_STORAGE.delete(key);
+    return true;
+  } catch (error) {
+    FALLBACK_STORAGE.set(key, value);
+    warnStorageFallback(runner, error);
+    return false;
+  }
+}
+
+/**
+ * Reads the first populated save value from localStorage or fallback memory.
+ *
+ * @param {Array<string|null>} keys - Candidate keys.
+ * @returns {string|null} Stored value or null.
+ */
+function readStorage(keys) {
+  for (const key of keys) {
+    if (!key) {
+      continue;
+    }
+    try {
+      const value = localStorage.getItem(key);
+      if (value) {
+        return value;
+      }
+    } catch {
+      // Fall through to in-memory fallback below.
+    }
+    const fallbackValue = FALLBACK_STORAGE.get(key);
+    if (fallbackValue) {
+      return fallbackValue;
+    }
+  }
+  return null;
+}
 
 /**
  * Snapshots the state the player entered the current scene with and writes the
@@ -33,7 +102,8 @@ export function checkpointScene(runner) {
     ...cloneSurfaceState(runner.state, runner.surfaceRegistry),
     timestamp
   };
-  localStorage.setItem(
+  writeStorage(
+    runner,
     runner.storageKeys.autosave,
     JSON.stringify(createSceneEntrySave(runner, {
       label: "Auto-Save",
@@ -58,7 +128,8 @@ export function updatePhoneCheckpointState(runner) {
   runner.checkpoint.visuals.social = structuredClone(runner.state.visuals.social);
   runner.checkpoint.visuals.texting = structuredClone(runner.state.visuals.texting);
   runner.checkpoint.timestamp = timestamp;
-  localStorage.setItem(
+  writeStorage(
+    runner,
     runner.storageKeys.autosave,
     JSON.stringify(createSceneEntrySave(runner, {
       label: "Auto-Save",
@@ -120,13 +191,18 @@ export function save(runner, { announce = false, slot = null } = {}) {
     return;
   }
   const key = slot ? runner.saveSlotKey(slot) : runner.storageKeys.save;
-  localStorage.setItem(key, JSON.stringify(createSnapshotSave(runner, {
+  const isDurable = writeStorage(runner, key, JSON.stringify(createSnapshotSave(runner, {
     label: slot ? `Slot ${slot}` : "Manual Save"
   })));
   if (announce) {
-    runner.activeRenderer?.setSaveStatus?.("Saved");
+    runner.activeRenderer?.setSaveStatus?.(isDurable ? "Saved" : "Saved for this session");
   }
-  return { ok: true, kind: SAVE_KIND_SNAPSHOT, message: "Saved" };
+  return {
+    ok: true,
+    kind: SAVE_KIND_SNAPSHOT,
+    durable: isDurable,
+    message: isDurable ? "Saved" : "Saved for this session"
+  };
 }
 
 /**
@@ -140,10 +216,10 @@ export function save(runner, { announce = false, slot = null } = {}) {
  */
 export function load(runner, { auto = false, slot = null } = {}) {
   const rawSave = slot
-    ? readFirstStorage([runner.saveSlotKey(slot), runner.legacySaveSlotKey(slot)])
+    ? readStorage([runner.saveSlotKey(slot), runner.legacySaveSlotKey(slot)])
     : auto
-      ? readFirstStorage([runner.storageKeys.autosave, runner.storageKeys.save, runner.storageKeys.legacyAutosave, runner.storageKeys.legacySave])
-      : readFirstStorage([runner.storageKeys.save, runner.storageKeys.legacySave]);
+      ? readStorage([runner.storageKeys.autosave, runner.storageKeys.save, runner.storageKeys.legacyAutosave, runner.storageKeys.legacySave])
+      : readStorage([runner.storageKeys.save, runner.storageKeys.legacySave]);
   if (!rawSave) {
     runner.activeRenderer?.setSaveStatus?.("No save found");
     return { ok: false, reason: "missing", message: "No save found" };

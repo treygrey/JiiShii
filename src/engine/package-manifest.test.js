@@ -53,6 +53,43 @@ describe("game package manifest", () => {
     expect(report.errors).toEqual([]);
   });
 
+  it("warns when entry modules are missing from the file table", () => {
+    const manifest = normalizeGameManifest({
+      schema: 1,
+      mode: "release",
+      entry: {
+        config: "game.config.js",
+        scenes: ["scenes/start.js"],
+        surfaceModules: ["surface-modules/browser.js"]
+      },
+      files: {
+        "game.config.js": { kind: "config", size: 10, mtime: 100 },
+        "scenes/start.js": { kind: "scene", size: 20, mtime: 200 }
+      }
+    });
+    const report = validateGameManifest(manifest);
+
+    expect(manifest.mode).toBe("release");
+    expect(report.errors).toEqual([]);
+    expect(report.warnings).toEqual([
+      'game.manifest.json entry "surface-modules/browser.js" is not listed in files.'
+    ]);
+  });
+
+  it("preserves authored package paths while normalizing separators", () => {
+    const manifest = buildGameManifest([
+      { path: ".\\scenes\\scene-phone-tour.js", size: 1, mtime: 10, sha256: "scene-hash" },
+      { path: "/assets/backgrounds/room-day.png", size: 2, mtime: 20 }
+    ]);
+
+    expect(manifest.entry.scenes).toEqual(["scenes/scene-phone-tour.js"]);
+    expect(manifest.files["assets/backgrounds/room-day.png"]).toEqual({
+      kind: "image",
+      size: 2,
+      mtime: 20
+    });
+  });
+
   it("generates a dev manifest from a package tree", () => {
     const root = mkdtempSync(join(tmpdir(), "jiishii-package-"));
     try {

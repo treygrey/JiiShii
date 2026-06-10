@@ -69,6 +69,7 @@ export class TextingRenderer {
     this.selectedThreadId = null;
     this.lastTextingState = null;
     this.lastCharacters = null;
+    this.documentNavigationHandler = null;
   }
 
   /**
@@ -145,7 +146,7 @@ export class TextingRenderer {
           <button class="phone-nav-button" type="button" aria-label="System back" data-phone-nav="back">
             <span class="phone-nav-glyph" aria-hidden="true">‹</span>
           </button>
-          <button class="phone-nav-button phone-home-button" type="button" aria-label="Home">
+          <button class="phone-nav-button phone-home-button" type="button" aria-label="Home" data-phone-nav="home">
             <span class="phone-home-pill" aria-hidden="true"></span>
           </button>
           <button class="phone-nav-button" type="button" aria-label="Settings">
@@ -163,23 +164,56 @@ export class TextingRenderer {
     this.typingIndicator = this.surface.querySelector(".typing-indicator");
     this.notificationHost = this.surface.querySelector(".phone-notification-host");
     this.saveStatus = this.surface.querySelector(".save-status");
-    this.bindAdvanceDeadZones();
     this.surface.querySelector(".thread-back-button")?.addEventListener("click", (event) => {
       event.stopPropagation();
       this.selectedThreadId = null;
       this.renderThreadList(this.lastTextingState, { characters: this.lastCharacters });
     });
-    this.surface.querySelector("[data-phone-nav='back']")?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      this.handleSystemBack();
-    });
-    this.surface.querySelector(".phone-home-button")?.addEventListener("click", (event) => {
-      event.stopPropagation();
-      if (this.runner?.state?.visuals?.phone?.isButtonEnabled === false) {
+    this.bindDocumentNavigation();
+    this.bindAdvanceDeadZones();
+  }
+
+  /**
+   * Captures Android nav clicks before stage-level handlers can swallow them.
+   *
+   * @returns {void}
+   */
+  bindDocumentNavigation() {
+    this.unbindDocumentNavigation();
+    this.documentNavigationHandler = (event) => {
+      if (!this.surface?.contains(event.target)) {
         return;
       }
-      this.runner?.openPhoneApp?.("home");
-    });
+      const navTarget = event.target.closest?.("[data-phone-nav]");
+      if (!navTarget) {
+        return;
+      }
+      event.stopPropagation();
+      if (navTarget.dataset.phoneNav === "back") {
+        this.handleSystemBack();
+        return;
+      }
+      if (navTarget.dataset.phoneNav === "home") {
+        if (this.runner?.state?.visuals?.phone?.isButtonEnabled === false) {
+          return;
+        }
+        this.runner?.openPhoneApp?.("home");
+      }
+    };
+    document.addEventListener("click", this.documentNavigationHandler, true);
+  }
+
+  /**
+   * Removes document-level Android nav capture.
+   *
+   * @returns {void}
+   */
+  unbindDocumentNavigation() {
+    if (!this.documentNavigationHandler) {
+      return;
+    }
+    document.removeEventListener("click", this.documentNavigationHandler, true);
+    this.documentNavigationHandler = null;
   }
 
   /**
@@ -230,6 +264,7 @@ export class TextingRenderer {
       clearTimeout(this.activeReveal.timeoutId);
     }
     this.activeReveal = null;
+    this.unbindDocumentNavigation();
     this.surface?.remove();
     this.surface = null;
     this.messageList = null;
@@ -384,6 +419,7 @@ export class TextingRenderer {
     if (!this.surface) {
       return;
     }
+    this.selectedThreadId = null;
     this.setInboxHeader();
     this.reset();
     const threads = this.sortedThreads(textingState);

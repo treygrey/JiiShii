@@ -133,7 +133,11 @@ export class SocialRenderer {
    * @returns {void}
    */
   renderSocialState(social, { phone, characters } = {}) {
-    this.shell.setBackHandler(null);
+    this.shell.setBackHandler(this.activeTab === "following" ? null : () => {
+      this.activeTab = "following";
+      this.renderSocialState(social, { phone, characters });
+      return true;
+    });
     this.lastSocialState = social;
     this.lastPhoneState = phone;
     this.lastCharacters = characters;

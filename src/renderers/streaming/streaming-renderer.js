@@ -292,6 +292,9 @@ export class StreamingRenderer {
    * @returns {void}
    */
   renderChatMessage(message = {}) {
+    if (!this.chatLog) {
+      return;
+    }
     const row = document.createElement("div");
     row.className = "chat-row";
     const name = message.id ?? message.name ?? "viewer";
