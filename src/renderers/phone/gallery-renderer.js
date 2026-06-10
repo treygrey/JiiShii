@@ -332,7 +332,7 @@ export class GalleryRenderer {
     wallpaperButton.textContent = "Set wallpaper";
     wallpaperButton?.addEventListener("click", (event) => {
       event.stopPropagation();
-      this.runner?.setPhoneWallpaper?.(image.image);
+      this.runner?.setPhoneWallpaper?.(image.id);
     });
     wallpaperButton.addEventListener("pointerdown", stopPhoneStoryAdvance);
     wallpaperButton.addEventListener("pointerup", stopPhoneStoryAdvance);

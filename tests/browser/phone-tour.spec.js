@@ -110,7 +110,7 @@ test("guided tour exercises gallery, wallpaper, social follow, like, and scroll 
   await openPhoneApp(page, "Gallery");
   await page.locator('[data-gallery-image="tour_wallpaper"]').click();
   await page.getByRole("button", { name: "Set wallpaper" }).click();
-  await expect.poll(() => readRuntime(page).then((state) => state.wallpaperImage)).toBe("tour_gallery_wallpaper");
+  await expect.poll(() => readRuntime(page).then((state) => state.wallpaperImage)).toBe("tour_wallpaper");
 
   await page.locator('[data-phone-nav="back"]').click();
   await page.locator('[data-phone-nav="home"]').click();

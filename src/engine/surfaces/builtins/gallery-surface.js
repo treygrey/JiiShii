@@ -32,6 +32,38 @@ import {
   normalizeSocialState
 } from "../../phone-state.js";
 
+/**
+ * Resolves the phone wallpaper field into an image asset id.
+ *
+ * Gallery-selected wallpapers store a gallery entry id. Authored
+ * setWallpaper() calls and old saves may still store a raw asset id. A resolver
+ * lets renderers distinguish valid raw assets from stale gallery ids.
+ *
+ * @param {object} phone - Phone visual state.
+ * @param {object} gallery - Gallery visual state.
+ * @param {object} [phoneConfig] - Normalized phone config.
+ * @param {object} [options] - Resolution options.
+ * @param {Function} [options.resolveImage] - Asset resolver for raw ids.
+ * @returns {string|null} Resolved wallpaper asset id, or fallback.
+ */
+export function resolveWallpaperAsset(phone = {}, gallery = {}, phoneConfig = {}, { resolveImage = null } = {}) {
+  const wallpaperImage = phone?.wallpaperImage ?? null;
+  if (!wallpaperImage) {
+    return phoneConfig.defaultWallpaper ?? null;
+  }
+
+  const galleryImage = (gallery?.images ?? []).find((image) => image.id === wallpaperImage);
+  if (galleryImage?.image) {
+    return galleryImage.image;
+  }
+
+  if (typeof resolveImage === "function") {
+    return resolveImage(wallpaperImage) ? wallpaperImage : phoneConfig.defaultWallpaper ?? null;
+  }
+
+  return wallpaperImage;
+}
+
 export const GALLERY_SURFACE = defineSurfaceModule({
   id: "gallery",
   kind: "app",

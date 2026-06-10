@@ -38,6 +38,7 @@ export function syncVisualState(runner, { instant = false } = {}) {
       characters: runner.characters,
       vars: runner.state.vars ?? {},
       phoneApps: runner.phoneApps,
+      phoneConfig: runner.phoneConfig,
       instant
     }
   });
@@ -86,6 +87,7 @@ export function projectSurface(runner, surfaceId, { instant = false } = {}) {
       characters: runner.characters,
       vars: runner.state.vars ?? {},
       phoneApps: runner.phoneApps,
+      phoneConfig: runner.phoneConfig,
       instant
     }
   });

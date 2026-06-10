@@ -1,3 +1,5 @@
+import { resolveWallpaperAsset } from "../../engine/surface-modules.js";
+
 const PHONE_ADVANCE_DEAD_ZONE_EVENTS = ["click", "pointerdown", "pointerup", "wheel"];
 
 /**
@@ -177,7 +179,13 @@ export class PhoneShell {
       return;
     }
     const wallpaper = this.surface.querySelector(".phone-wallpaper");
-    const wallpaperUrl = phone.wallpaperImage ? this.resolveImage(phone.wallpaperImage) : null;
+    const wallpaperImage = resolveWallpaperAsset(
+      phone,
+      this.runner?.state?.visuals?.gallery,
+      this.runner?.phoneConfig,
+      { resolveImage: this.resolveImage }
+    );
+    const wallpaperUrl = wallpaperImage ? this.resolveImage(wallpaperImage) : null;
     wallpaper.style.backgroundImage = wallpaperUrl ? `url("${wallpaperUrl}")` : "";
     const isHomeEnabled = phone.isButtonEnabled !== false;
     for (const homeButton of this.surface.querySelectorAll("[data-phone-nav='home']")) {

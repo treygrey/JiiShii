@@ -7,6 +7,7 @@ import {
   defineSurfaceModule,
   normalizeSurfaceState,
   projectSurfaceState,
+  resolveWallpaperAsset,
   surfaceCommandMeta,
   surfaceRendererContract
 } from "./surface-modules.js";
@@ -215,5 +216,36 @@ describe("surface module harness", () => {
       { images: [{ id: "demo_image" }] },
       { instant: true }
     );
+  });
+
+  it("resolves wallpaper through gallery entries, raw asset ids, and default fallback", () => {
+    const gallery = {
+      images: [
+        { id: "gallery_entry", image: "assets/gallery_entry_image" }
+      ]
+    };
+    const phoneConfig = { defaultWallpaper: "assets/default_wallpaper" };
+    const resolveImage = (id) => id === "assets/raw_wallpaper" ? `/assets/${id}.png` : null;
+
+    expect(resolveWallpaperAsset(
+      { wallpaperImage: "gallery_entry" },
+      gallery,
+      phoneConfig,
+      { resolveImage }
+    )).toBe("assets/gallery_entry_image");
+
+    expect(resolveWallpaperAsset(
+      { wallpaperImage: "assets/raw_wallpaper" },
+      gallery,
+      phoneConfig,
+      { resolveImage }
+    )).toBe("assets/raw_wallpaper");
+
+    expect(resolveWallpaperAsset(
+      { wallpaperImage: "missing_gallery_entry" },
+      gallery,
+      phoneConfig,
+      { resolveImage }
+    )).toBe("assets/default_wallpaper");
   });
 });
