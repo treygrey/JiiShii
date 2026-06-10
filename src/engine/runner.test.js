@@ -48,6 +48,7 @@ import {
   saveGalleryImage,
   setWallpaper,
   socialFollow,
+  socialLike,
   socialPost,
   condition
 } from "./commands.js";
@@ -1928,6 +1929,7 @@ describe("SceneRunner rollback sprite state", () => {
       setWallpaper("tour_wallpaper"),
       saveGalleryImage("tour_photo", "tour_gallery_selfie", { tags: ["Guide"] }),
       socialPost("tour_post", { poster: "alex", text: "hello" }),
+      socialLike("tour_post"),
       say("alex", "saved phone state")
     ], {
       storageKeys: {
@@ -1940,12 +1942,14 @@ describe("SceneRunner rollback sprite state", () => {
     runner.start();
     completeDialogue(compositor, 0);
     runner.followSocialPoster("alex");
+    runner.likeSocialPost("tour_post");
     runner.save({ announce: true, slot: 1 });
 
     runner.state.visuals.phone.wallpaperImage = null;
     runner.state.visuals.gallery.images = [];
     runner.state.visuals.social.posts = [];
     runner.state.visuals.social.follows = {};
+    runner.state.visuals.social.likes = {};
 
     const result = runner.load({ slot: 1 });
 
@@ -1958,9 +1962,10 @@ describe("SceneRunner rollback sprite state", () => {
       expect.objectContaining({ id: "tour_post", poster: "alex" })
     ]);
     expect(runner.state.visuals.social.follows).toEqual({ alex: true });
+    expect(runner.state.visuals.social.likes).toEqual({ tour_post: true });
   });
 
-  it("loads updated phone app state from scene-entry autosaves", () => {
+  it("loads updated phone app state from scene-entry autosaves, including player follows and likes", () => {
     const { runner, compositor } = makeRunner([
       stage("irl"),
       setWallpaper("tour_wallpaper"),
@@ -1978,12 +1983,14 @@ describe("SceneRunner rollback sprite state", () => {
     runner.start();
     completeDialogue(compositor, 0);
     runner.followSocialPoster("alex");
+    runner.likeSocialPost("tour_post");
     localStorage.setItem("phone-entry-save", localStorage.getItem("phone-entry-autosave"));
 
     runner.state.visuals.phone.wallpaperImage = null;
     runner.state.visuals.gallery.images = [];
     runner.state.visuals.social.posts = [];
     runner.state.visuals.social.follows = {};
+    runner.state.visuals.social.likes = {};
 
     const result = runner.load();
 
@@ -1996,6 +2003,86 @@ describe("SceneRunner rollback sprite state", () => {
       expect.objectContaining({ id: "tour_post", poster: "alex" })
     ]);
     expect(runner.state.visuals.social.follows).toEqual({ alex: true });
+    expect(runner.state.visuals.social.likes).toEqual({ tour_post: true });
+  });
+
+  it("keeps current rollback semantics for phone wallpaper and persistent gallery/social entries", () => {
+    const { runner, compositor } = makeRunner([
+      stage("irl"),
+      setWallpaper("wallpaper_before"),
+      saveGalleryImage("before_temp", "before_temp_asset"),
+      saveGalleryImage("before_persistent", "before_persistent_asset", { persistent: true }),
+      socialPost("before_post", { poster: "alex", text: "before", persistent: true }),
+      say("alex", "first phone beat"),
+      setWallpaper("wallpaper_after"),
+      saveGalleryImage("after_temp", "after_temp_asset"),
+      saveGalleryImage("after_persistent", "after_persistent_asset", { persistent: true }),
+      socialPost("after_temp_post", { poster: "alex", text: "after temp" }),
+      socialPost("after_persistent_post", { poster: "alex", text: "after", persistent: true }),
+      say("alex", "second phone beat")
+    ]);
+
+    runner.start();
+    completeDialogue(compositor, 0);
+    runner.advance();
+    runner.openPhoneApp("gallery");
+
+    expect(runner.isPhoneOpen()).toBe(true);
+    expect(runner.state.visuals.gallery.images.map((image) => image.id)).toEqual([
+      "before_temp",
+      "before_persistent",
+      "after_temp",
+      "after_persistent"
+    ]);
+
+    runner.rollBack();
+
+    expect(runner.isPhoneOpen()).toBe(false);
+    expect(runner.state.currentSurface).toBe("irl");
+    expect(runner.state.visuals.phone.wallpaperImage).toBe("wallpaper_after");
+    expect(runner.state.visuals.gallery.images.map((image) => image.id)).toEqual([
+      "before_temp",
+      "before_persistent",
+      "after_persistent"
+    ]);
+    expect(runner.state.visuals.social.posts.map((post) => post.id)).toEqual([
+      "before_post",
+      "after_persistent_post"
+    ]);
+  });
+
+  it("loads a snapshot saved while the phone is open back to the underlying blocked story choice", () => {
+    const { runner, renderers } = makeRunner([
+      stage("irl"),
+      choice([
+        { text: "Stay", goto: "stay" },
+        { text: "Leave", goto: "leave" }
+      ])
+    ], {
+      storageKeys: {
+        save: "phone-open-save",
+        autosave: "phone-open-autosave",
+        slotPrefix: "phone-open-slot-"
+      }
+    });
+
+    runner.start();
+    runner.openPhoneApp("home");
+    runner.openPhoneApp("gallery");
+    runner.save({ announce: true, slot: 1 });
+
+    runner.returnToStorySurface();
+    runner.blockingInput = false;
+    runner.state.currentCommandIndex = 99;
+
+    const result = runner.load({ slot: 1 });
+
+    expect(result).toEqual(expect.objectContaining({ ok: true, kind: "snapshot" }));
+    expect(runner.surfaceStack).toEqual(["irl"]);
+    expect(runner.state.currentSurface).toBe("irl");
+    expect(runner.isPhoneOpen()).toBe(false);
+    expect(runner.blockingInput).toBe(true);
+    expect(renderers.irl.showChoice).toHaveBeenCalled();
   });
 
   it("handles corrupt saves without mutating the current runner state", () => {
