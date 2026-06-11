@@ -4,7 +4,7 @@ import {
   imageIdsFromPath,
   buildAssetDiscovery,
   buildAssetRegistry
-} from "./asset-discovery.js";
+} from "./assets/asset-discovery.js";
 import {
   IMAGE_ASSETS,
   listImageIds,

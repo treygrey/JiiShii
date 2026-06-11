@@ -18,15 +18,24 @@ describe("shell settings", () => {
     expect(normalizeShellSettings({
       textSpeed: 2,
       autoDelay: 50,
+      skipMode: "all",
+      fontScale: 2,
+      reducedMotion: "on",
       masterVolume: -1,
       musicVolume: 0.25
     })).toEqual({
       ...DEFAULT_SHELL_SETTINGS,
       textSpeed: 1,
       autoDelay: 400,
+      skipMode: "all",
+      fontScale: 1.3,
+      reducedMotion: "on",
       masterVolume: 0,
       musicVolume: 0.25
     });
+    expect(normalizeShellSettings({ skipMode: "nope" }).skipMode).toBe("seen");
+    expect(normalizeShellSettings({ reducedMotion: "nope" }).reducedMotion).toBe("system");
+    expect(normalizeShellSettings({ fontScale: 0.1 }).fontScale).toBe(0.85);
   });
 
   it("formats labels for preference controls", () => {

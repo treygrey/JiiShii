@@ -1,9 +1,10 @@
-import { evalShowIf } from "../showif.js";
+import { evalShowIf } from "../state/showif.js";
+import { annotateSeenChoiceOptions } from "./persistent-controller.js";
 import {
   appendStreamChat,
   appendTextMessages,
   setStreamWindowState
-} from "../visual-state.js";
+} from "../state/visual-state.js";
 
 /**
  * Presents a narration beat through the runner.
@@ -70,8 +71,9 @@ export function showDialogue(runner, command) {
  * @returns {void}
  */
 export function showChoice(runner, command) {
+  const lookupVars = runner.conditionVars();
   const visible = (command.options ?? []).filter(
-    (option) => option.showIf == null || evalShowIf(option.showIf, runner.state.vars)
+    (option) => option.showIf == null || evalShowIf(option.showIf, lookupVars)
   );
 
   if (visible.length === 0) {
@@ -81,7 +83,7 @@ export function showChoice(runner, command) {
     return;
   }
 
-  const filtered = { ...command, options: visible };
+  const filtered = { ...command, options: annotateSeenChoiceOptions(runner, visible) };
   runner.isWaitingForPlayer = true;
   runner.blockingInput = true;
   runner.activeRenderer.showChoice(filtered, {
@@ -170,6 +172,9 @@ export function showLineBlock(runner, command) {
     onComplete: () => {
       runner.state.currentCommandIndex += 1;
       runner.save();
+      if (!runner.maybeAutoAdvanceToDecision()) {
+        runner.onIdle();
+      }
     }
   });
 }
@@ -190,6 +195,9 @@ export function showStreamImage(runner, command) {
     onComplete: () => {
       runner.state.currentCommandIndex += 1;
       runner.save();
+      if (!runner.maybeAutoAdvanceToDecision()) {
+        runner.onIdle();
+      }
     }
   });
 }
@@ -214,6 +222,9 @@ export function showStreamChatBlock(runner, command) {
       if (!command.concurrent) {
         runner.state.currentCommandIndex += 1;
         runner.save();
+        if (!runner.maybeAutoAdvanceToDecision()) {
+          runner.onIdle();
+        }
       }
     }
   });
@@ -239,8 +250,97 @@ export function showStreamNarration(runner, command) {
     onComplete: () => {
       runner.state.currentCommandIndex += 1;
       runner.save();
+      if (!runner.maybeAutoAdvanceToDecision()) {
+        runner.onIdle();
+      }
     }
   });
+}
+
+/**
+ * Presents a blocking text-input beat and stores the submission in a var.
+ *
+ * @param {object} runner - Scene runner instance.
+ * @param {object} command - Input command.
+ * @returns {void}
+ */
+export function showInput(runner, command) {
+  runner.beginReadableBeat();
+  runner.compositor.hideNarration();
+  runner.isWaitingForPlayer = true;
+  // Block tap-to-advance so a stage click cannot dismiss the input beat.
+  runner.blockingInput = true;
+  runner.compositor.showInput(
+    {
+      ...command,
+      // Re-presentations (rollback, load) prefill the previous answer.
+      default: runner.state.vars[command.key] ?? command.default ?? ""
+    },
+    {
+      onSubmit: (value) => {
+        const text = String(value ?? "").trim();
+        if (!text && !command.allowEmpty) {
+          return false;
+        }
+        runner.state.vars[command.key] = text;
+        updateActiveInputSnapshot(runner);
+        runner.recordHistory({ kind: "narration", message: text });
+        runner.blockingInput = false;
+        runner.isWaitingForPlayer = false;
+        runner.state.currentCommandIndex += 1;
+        runner.save();
+        runner.runUntilBlocked();
+        return true;
+      }
+    }
+  );
+}
+
+/**
+ * Plays a blocking full-screen video cutscene beat.
+ *
+ * @param {object} runner - Scene runner instance.
+ * @param {object} command - Video command.
+ * @returns {void}
+ */
+export function showVideo(runner, command) {
+  runner.beginReadableBeat();
+  runner.compositor.hideNarration();
+  runner.isWaitingForPlayer = true;
+  // Block tap-to-advance; the video layer owns clicks (skip when allowed).
+  runner.blockingInput = true;
+  let finished = false;
+  runner.compositor.playVideo(command, {
+    onComplete: () => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      runner.blockingInput = false;
+      runner.isWaitingForPlayer = false;
+      runner.state.currentCommandIndex += 1;
+      runner.save();
+      runner.runUntilBlocked();
+    }
+  });
+}
+
+/**
+ * Mirrors a submitted input value into the active rollback snapshot so rolling
+ * back to the prompt can prefill the last answer without making input permanent.
+ *
+ * @param {object} runner - Scene runner instance.
+ * @returns {void}
+ */
+function updateActiveInputSnapshot(runner) {
+  const snapshot = runner.rollbackBuffer?.[runner.rollbackPos];
+  if (
+    snapshot &&
+    snapshot.sceneId === runner.state.currentSceneId &&
+    snapshot.commandIndex === runner.activeBeatCommandIndex
+  ) {
+    snapshot.vars = structuredClone(runner.state.vars);
+  }
 }
 
 /**

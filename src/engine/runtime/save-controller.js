@@ -1,13 +1,14 @@
-import { cloneAudioState } from "../audio-state.js";
-import { cloneHistoryState } from "../history-state.js";
+import { cloneAudioState } from "../audio/audio-state.js";
+import { cloneHistoryState } from "../state/history-state.js";
 import {
   createSceneEntrySave as createSceneEntrySaveEnvelope,
   createSnapshotSave as createSnapshotSaveEnvelope,
   parseSaveEnvelope,
   SAVE_KIND_SNAPSHOT
 } from "../save-format.js";
-import { createInitialState, migrateState } from "../state.js";
-import { cloneSurfaceState, normalizeSurfaceState } from "../surface-modules.js";
+import { createInitialState, migrateState } from "../state/index.js";
+import { cloneSurfaceState, normalizeSurfaceState } from "../surfaces/index.js";
+import { shouldCaptureBeatSnapshot } from "./command-executor.js";
 
 const FALLBACK_STORAGE = new Map();
 
@@ -95,6 +96,8 @@ export function checkpointScene(runner) {
     surfaceStack: [],
     phoneNavigationSurface: null,
     vars: structuredClone(runner.state.vars),
+    saveVars: structuredClone(runner.state.saveVars ?? {}),
+    saveVarEvents: structuredClone(runner.state.saveVarEvents ?? {}),
     rng: runner.state.rng,
     choicesMade: structuredClone(runner.state.choicesMade ?? []),
     audio: cloneAudioState(runner.state.audio),
@@ -260,12 +263,13 @@ function loadSnapshot(runner, envelope, saved) {
     sceneId: saved.currentSceneId,
     commandIndex: saved.currentCommandIndex
   }, {
-    preservePersistentPhoneState: false
+    preservePersistentPhoneState: false,
+    preserveSaveVars: false
   });
   runner.rollbackBuffer = [];
   runner.rollbackPos = -1;
   runner.isRewound = false;
-  if (runner.isWaitingForPlayer && !runner.blockingInput && !runner.isFinished) {
+  if (shouldCaptureBeatSnapshot(runner)) {
     runner.captureBeatSnapshot();
   }
   runner.activeRenderer?.setSaveStatus?.("Loaded");
@@ -300,6 +304,8 @@ function loadSceneEntry(runner, envelope, saved, savedScene) {
     surfaceStack: structuredClone(saved.surfaceStack ?? []),
     phoneNavigationSurface: saved.phoneNavigationSurface ?? null,
     vars: saved.vars ?? {},
+    saveVars: structuredClone(saved.saveVars ?? {}),
+    saveVarEvents: structuredClone(saved.saveVarEvents ?? {}),
     rng: saved.rng,
     choicesMade: structuredClone(saved.choicesMade ?? []),
     audio: cloneAudioState(saved.audio),

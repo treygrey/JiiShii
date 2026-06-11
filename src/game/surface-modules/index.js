@@ -6,8 +6,8 @@
 // are ignored.
 // =============================================================================
 
-import { buildSurfaceModuleDiscovery } from "../../engine/content-discovery.js";
-import { BUILTIN_SURFACE_MODULES } from "../../engine/surface-modules.js";
+import { buildSurfaceModuleDiscovery } from "../../engine/content/content-discovery.js";
+import { BUILTIN_SURFACE_MODULES } from "../../engine/surfaces/index.js";
 
 const SURFACE_MODULE_FILES = import.meta.glob(
   ["./**/*.js", "!./index.js", "!./**/*.example.js", "!./**/*.test.js", "!./**/*.spec.js", "!./**/_*.js"],

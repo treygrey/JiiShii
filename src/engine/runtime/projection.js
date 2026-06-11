@@ -1,4 +1,4 @@
-import { projectSurfaceState, readSurfaceStateSlice } from "../surface-modules.js";
+import { projectSurfaceState, readSurfaceStateSlice } from "../surfaces/index.js";
 
 /**
  * Projects runner-owned background state into the page backdrop.

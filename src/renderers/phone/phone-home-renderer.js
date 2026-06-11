@@ -1,4 +1,4 @@
-import { PHONE_HOME_SURFACE } from "../../engine/surface-modules.js";
+import { PHONE_HOME_SURFACE } from "../../engine/surfaces/index.js";
 import { PhoneShell, stopPhoneStoryAdvance } from "./phone-shell.js";
 
 const APP_LABELS = {

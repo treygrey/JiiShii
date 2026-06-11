@@ -4,7 +4,7 @@ import {
   cloneHistoryState,
   createHistoryState,
   normalizeHistoryState
-} from "./history-state.js";
+} from "./state/history-state.js";
 
 describe("history state", () => {
   it("creates an empty reader backlog", () => {

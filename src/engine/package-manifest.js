@@ -3,6 +3,7 @@ export const GAME_MANIFEST_SCHEMA = 1;
 const SCRIPT_EXTENSIONS = new Set([".js", ".mjs"]);
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".svg"]);
 const AUDIO_EXTENSIONS = new Set([".mp3", ".ogg", ".wav", ".m4a", ".flac"]);
+const VIDEO_EXTENSIONS = new Set([".webm", ".mp4", ".m4v", ".ogv"]);
 const SPRITE_EXTENSIONS = new Set([".png"]);
 
 /**
@@ -68,6 +69,7 @@ export function classifyPackageFile(relativePath) {
   if (lower.startsWith("surface-modules/") && SCRIPT_EXTENSIONS.has(extension)) return "surfaceModule";
   if (lower.startsWith("assets/audio/") && AUDIO_EXTENSIONS.has(extension)) return "audio";
   if (lower.startsWith("assets/sprites/") && SPRITE_EXTENSIONS.has(extension)) return "sprite";
+  if (lower.startsWith("assets/") && VIDEO_EXTENSIONS.has(extension)) return "video";
   if (lower.startsWith("assets/") && IMAGE_EXTENSIONS.has(extension)) return "image";
   if (SCRIPT_EXTENSIONS.has(extension)) return "script";
   return "file";

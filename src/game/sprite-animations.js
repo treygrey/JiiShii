@@ -4,7 +4,7 @@
 //
 // Example:
 //
-// import { registerIrlSpriteTransition } from "../engine/irl-stage-direction.js";
+// import { registerIrlSpriteTransition } from "../engine/dom/irl-stage-direction.js";
 //
 // registerIrlSpriteTransition("quickDip", {
 //   duration: 120,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateRendererContracts } from "./renderer-contract.js";
+import { validateRendererContracts } from "./surfaces/renderer-contract.js";
 
 /**
  * Builds a fake renderer with only contract metadata.

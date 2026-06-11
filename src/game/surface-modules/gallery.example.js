@@ -6,7 +6,7 @@
 // =============================================================================
 
 import { resolveImage } from "../assets.js";
-import { defineSurfaceModule } from "../../engine/surface-modules.js";
+import { defineSurfaceModule } from "../../engine/surfaces/index.js";
 
 /**
  * Creates a gallery image command for authored scenes.

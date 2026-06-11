@@ -3,8 +3,8 @@ import {
   markTextThreadRead as markTextThreadReadState,
   markTextThreadUnread as markTextThreadUnreadState,
   setTextingThread
-} from "../visual-state.js";
-import { clearPhoneNotification } from "../phone-state.js";
+} from "../state/visual-state.js";
+import { clearPhoneNotification } from "../state/phone-state.js";
 
 /**
  * Resolves a thread command into a texting contact header.

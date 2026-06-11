@@ -1,4 +1,4 @@
-import { STREAMING_SURFACE } from "../../engine/surface-modules.js";
+import { STREAMING_SURFACE } from "../../engine/surfaces/index.js";
 import { createChoiceBand } from "../choice-band.js";
 
 const CHAT_JITTER_MIN = 130;

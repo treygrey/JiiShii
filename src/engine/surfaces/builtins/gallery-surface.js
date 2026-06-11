@@ -5,7 +5,7 @@ import {
   normalizePhoneState,
   removeGalleryImageState,
   saveGalleryImageState
-} from "../../phone-state.js";
+} from "../../state/phone-state.js";
 
 /**
  * Resolves the phone wallpaper field into an image asset id.
@@ -83,6 +83,7 @@ function handleGalleryCommand(context) {
   const gallery = runner.state.visuals.gallery;
   if (command.type === "saveGalleryImage") {
     saveGalleryImageState(gallery, command);
+    runner.unlockExtra?.("gallery", command.image);
     context.projectSurface();
     context.updatePhoneCheckpoint();
     context.advance();

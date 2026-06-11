@@ -12,7 +12,7 @@ import {
   applySpriteExpression,
   applySpriteTransform,
   normalizeSpriteState
-} from "../../sprite-state.js";
+} from "../../state/sprite-state.js";
 import {
   appendStreamChat,
   appendTextMessages,
@@ -23,14 +23,14 @@ import {
   setStreamTitleState,
   setStreamWindowState,
   setTextingThread
-} from "../../visual-state.js";
+} from "../../state/visual-state.js";
 import {
   createGalleryState,
   createSocialState,
   normalizeGalleryState,
   normalizePhoneState,
   normalizeSocialState
-} from "../../phone-state.js";
+} from "../../state/phone-state.js";
 
 export const STREAMING_SURFACE = defineSurfaceModule({
   id: "streaming",
@@ -91,6 +91,9 @@ export const STREAMING_SURFACE = defineSurfaceModule({
           onComplete: () => {
             runner.advanceCommand();
             runner.save();
+            if (!runner.maybeAutoAdvanceToDecision()) {
+              runner.onIdle();
+            }
           }
         });
       },
@@ -114,6 +117,9 @@ export const STREAMING_SURFACE = defineSurfaceModule({
             if (!command.concurrent) {
               runner.advanceCommand();
               runner.save();
+              if (!runner.maybeAutoAdvanceToDecision()) {
+                runner.onIdle();
+              }
             }
           }
         });
@@ -142,6 +148,9 @@ export const STREAMING_SURFACE = defineSurfaceModule({
           onComplete: () => {
             runner.advanceCommand();
             runner.save();
+            if (!runner.maybeAutoAdvanceToDecision()) {
+              runner.onIdle();
+            }
           }
         });
       },

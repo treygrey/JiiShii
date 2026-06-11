@@ -121,13 +121,19 @@ export class LayerCompositor {
    * @param {Function} [options.onAdvance] - Player advance (tap-to-continue). The
    *   narration box lives outside #game-stage, so it needs its own advance click.
    */
-  constructor(stage, { getSettings, onLog, onAdvance } = {}) {
+  constructor(stage, { getSettings, onLog, onAdvance, resolveVideo } = {}) {
     /** @type {Element} */
     this.stage = stage;
 
     this.getSettings = getSettings ?? (() => ({ textSpeed: 0.6 }));
     this.onLog = onLog ?? (() => {});
     this.onAdvance = onAdvance ?? (() => {});
+    this.resolveVideo = resolveVideo ?? (() => null);
+
+    /** @type {HTMLElement | null} */
+    this.activeInputPanel = null;
+    /** @type {{ element: HTMLElement, cancel: Function } | null} */
+    this.activeVideo = null;
 
     /**
      * Registry of named layers. Each entry holds:
@@ -542,6 +548,158 @@ export class LayerCompositor {
     this.activeNarrationReveal = null;
     this.narrationBox.hidden = true;
     this.narrationBox.classList.remove("is-in", "is-awaiting", "is-dialogue");
+    // hideNarration is the shared "beat is being replaced" chokepoint —
+    // rollback reconstruction and every presenter call it — so transient
+    // input panels and video layers clean up here too.
+    this.hideInput();
+    this.stopVideo();
+  }
+
+  // ===========================================================================
+  // PLAYER TEXT INPUT — compositor-owned, works on any surface
+  // ===========================================================================
+
+  /**
+   * Shows a blocking text-input panel for an `input()` beat.
+   *
+   * @param {object} command - Input command (prompt, placeholder, default...).
+   * @param {object} handlers - Input handlers.
+   * @param {Function} handlers.onSubmit - Receives the typed value; returns
+   *   false to keep the panel open (empty submission rejected).
+   * @returns {void}
+   */
+  showInput(command, { onSubmit } = {}) {
+    this.hideInput();
+    const panel = document.createElement("div");
+    panel.className = "compositor-input is-in";
+    panel.innerHTML = `
+      <div class="compositor-input-card">
+        <p class="compositor-input-prompt"></p>
+        <form class="compositor-input-form">
+          <input class="compositor-input-field" type="text" autocomplete="off" />
+          <button class="compositor-input-submit" type="submit">OK</button>
+        </form>
+      </div>
+    `;
+    panel.querySelector(".compositor-input-prompt").textContent = command.prompt ?? "";
+    const field = panel.querySelector(".compositor-input-field");
+    field.placeholder = command.placeholder ?? "";
+    field.value = command.default ?? "";
+    field.maxLength = Number.isFinite(command.maxLength) && command.maxLength > 0 ? command.maxLength : 40;
+    // Keep stage tap-to-advance and shell shortcuts away from typing.
+    panel.addEventListener("click", (event) => event.stopPropagation());
+    panel.addEventListener("keydown", (event) => event.stopPropagation());
+    panel.querySelector(".compositor-input-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const accepted = onSubmit?.(field.value);
+      if (accepted !== false) {
+        this.hideInput();
+      } else {
+        field.focus();
+      }
+    });
+    this.activeInputPanel = panel;
+    this.stage.parentElement.append(panel);
+    field.focus();
+    field.select();
+  }
+
+  /**
+   * Removes any active input panel without submitting.
+   *
+   * @returns {void}
+   */
+  hideInput() {
+    this.activeInputPanel?.remove();
+    this.activeInputPanel = null;
+  }
+
+  // ===========================================================================
+  // VIDEO CUTSCENES — compositor-owned, works on any surface
+  // ===========================================================================
+
+  /**
+   * Plays a full-screen video cutscene for a `video()` beat.
+   *
+   * Resolves the asset through the configured video registry; an unknown id
+   * logs a warning and completes immediately so the story never stalls.
+   *
+   * @param {object} command - Video command (id, skippable, volume, loop).
+   * @param {object} handlers - Playback handlers.
+   * @param {Function} handlers.onComplete - Called once when playback ends or
+   *   the player skips. Not called when the layer is torn down by rollback.
+   * @returns {void}
+   */
+  playVideo(command, { onComplete } = {}) {
+    this.stopVideo();
+    const src = this.resolveVideo(command.id);
+    if (!src) {
+      console.warn(`JiiShii: video "${command.id}" is not a discovered video asset; skipping cutscene.`);
+      onComplete?.();
+      return;
+    }
+
+    const layer = document.createElement("div");
+    layer.className = "compositor-video is-in";
+    const video = document.createElement("video");
+    video.className = "compositor-video-element";
+    video.src = src;
+    video.autoplay = true;
+    video.playsInline = true;
+    video.loop = command.loop === true;
+    const settings = this.getSettings();
+    video.volume = Math.min(1, Math.max(0, (command.volume ?? 1) * (settings.masterVolume ?? 1)));
+    layer.append(video);
+
+    let done = false;
+    const finish = () => {
+      if (done) {
+        return;
+      }
+      done = true;
+      this.stopVideo();
+      onComplete?.();
+    };
+    const entry = {
+      element: layer,
+      cancel: () => {
+        done = true;
+        video.pause();
+        video.removeAttribute("src");
+        layer.remove();
+      }
+    };
+
+    video.addEventListener("ended", finish);
+    video.addEventListener("error", () => {
+      console.warn(`JiiShii: video "${command.id}" failed to play; skipping cutscene.`);
+      finish();
+    });
+    layer.addEventListener("click", (event) => {
+      event.stopPropagation();
+      if (command.skippable !== false) {
+        finish();
+      }
+    });
+
+    this.activeVideo = entry;
+    this.stage.parentElement.append(layer);
+    // Autoplay with audio can be rejected before a user gesture; retry muted
+    // so the cutscene still plays instead of freezing the story.
+    video.play?.()?.catch?.(() => {
+      video.muted = true;
+      video.play?.()?.catch?.(() => finish());
+    });
+  }
+
+  /**
+   * Removes any active video layer without completing its beat.
+   *
+   * @returns {void}
+   */
+  stopVideo() {
+    this.activeVideo?.cancel();
+    this.activeVideo = null;
   }
 
   // ===========================================================================

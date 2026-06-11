@@ -42,6 +42,8 @@ export async function loadBundledPackage() {
     resolveImage: assetModule.resolveImage,
     resolveImageAmbiguity: assetModule.resolveImageAmbiguity,
     listImageIds: assetModule.listImageIds,
+    resolveVideo: assetModule.resolveVideo,
+    listVideoIds: assetModule.listVideoIds,
     resolveAudio: audioModule.resolveAudio,
     resolveAudioAmbiguity: audioModule.resolveAudioAmbiguity,
     listAudioIds: audioModule.listAudioIds,

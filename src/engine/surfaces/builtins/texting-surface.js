@@ -12,7 +12,7 @@ import {
   applySpriteExpression,
   applySpriteTransform,
   normalizeSpriteState
-} from "../../sprite-state.js";
+} from "../../state/sprite-state.js";
 import {
   appendStreamChat,
   appendTextMessages,
@@ -23,14 +23,14 @@ import {
   setStreamTitleState,
   setStreamWindowState,
   setTextingThread
-} from "../../visual-state.js";
+} from "../../state/visual-state.js";
 import {
   createGalleryState,
   createSocialState,
   normalizeGalleryState,
   normalizePhoneState,
   normalizeSocialState
-} from "../../phone-state.js";
+} from "../../state/phone-state.js";
 
 export const TEXTING_SURFACE = defineSurfaceModule({
   id: "texting",

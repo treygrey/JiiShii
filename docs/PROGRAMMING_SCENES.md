@@ -80,6 +80,11 @@ export const GAME_CONFIG = {
   footer: "demo build",
   about: "A short description shown in the About overlay.",
   firstSceneId: "scene-001-start",
+  storageNamespace: "my-vn",
+  display: {
+    aspectRatio: "16:9",
+    narrationMaxChars: 80
+  },
   shell: {
     saveTitle: "Save Game",
     loadTitle: "Load Game",
@@ -97,11 +102,20 @@ export const GAME_CONFIG = {
     endDefaultMessage: "The scene has ended.",
     returnToTitleLabel: "Return to title"
   },
+  extras: {
+    gallery: [
+      { id: "chapter_one_cg", title: "Chapter One" }
+    ],
+    music: [
+      { id: "main_theme", title: "Main Theme" }
+    ]
+  },
   storage: {
     save: "my-vn-save",
     autosave: "my-vn-autosave",
     settings: "my-vn-settings",
-    slotPrefix: "my-vn-save-slot-"
+    slotPrefix: "my-vn-save-slot-",
+    persistent: "my-vn-persistent"
   }
 };
 ```
@@ -116,8 +130,17 @@ The important fields:
   does not rewrite `scene-001-start` into `scene_001_start`; use the same id
   you put in `scene({ id })`.
 - `shell`: player-facing menu/save/history/preference labels.
-- `storage`: localStorage keys. Change these for each game so saves do not
-  collide with another JiiShii project.
+- `display.aspectRatio`: authored game frame. Use `"16:9"`, `"4:3"`,
+  `"21:9"`, or `"free"` for a fully responsive web layout.
+- `display.narrationMaxChars`: approximate maximum narration/dialogue line
+  length in characters. Defaults to `80`, which keeps ultrawide screens from
+  stretching text into one long line.
+- `storageNamespace`: shortcut that derives save, autosave, settings, slot, and
+  persistent-progress keys for one game.
+- `storage`: explicit localStorage keys. Use these only when you need full
+  control; explicit keys override `storageNamespace`.
+- `extras`: title-screen gallery/music entries. Entries stay locked until the
+  story shows or plays the matching asset.
 
 If the title screen still shows old text, reload the browser after changing
 `game.config.js`.
@@ -305,6 +328,12 @@ Authors mostly configure labels and storage keys in `GAME_CONFIG`. Scene-entry
 autosaves and save-anywhere manual slots use the engine save envelope. Rollback
 snapshots, save/load, debug overlay, and renderers all project from runner-owned
 state.
+
+Skip has two player preference modes. The default, **Seen text only**, stops at
+the first unread dialogue/narration/text beat using cross-playthrough seen-text
+tracking. **All text** is the opt-in fast-forward mode for players who want to
+skip unread content too. Choice options selected on earlier playthroughs are
+marked as seen when they appear again.
 
 Keyboard defaults:
 
@@ -545,6 +574,8 @@ stopAmbience({ fadeOut: 500 })
 sound("door_slam", { volume: 0.8 })
 voice("line_001")
 
+video("intro_cutscene", { skippable: true, volume: 0.9 })
+
 pause(500)
 flash({ color: "rgba(255,255,255,0.75)", duration: 120 })
 shake({ intensity: 16, duration: 320 })
@@ -571,6 +602,10 @@ Channel semantics:
 
 For fades, named sounds, crops, duration cuts, loop windows, speed changes, and
 rollback rules, see `docs/AUDIO_COOKBOOK.md`.
+
+`video()` plays a full-screen cutscene from discovered `.webm`, `.mp4`, `.m4v`,
+or `.ogv` files under `assets/`. It is a rollbackable beat: rolling back can
+land on it again, and replay/load reconstruction skips past it deterministically.
 
 `pause()` is a skippable timed beat. A click advances past it. `flash()` and
 `shake()` are transient compositor effects; pair them with `sound()` and
@@ -659,6 +694,14 @@ add("trust", 1)
 setFlag("metAlex")
 clearFlag("metAlex")
 roll("die", 1, 6)
+saveVar("arcade_high_score", 50)
+saveAdd("arcade_total_score", 50)
+saveFlag("cleared_arcade")
+input("player_name", {
+  prompt: "What should people call you?",
+  placeholder: "Name",
+  maxLength: 32
+})
 condition({
   if: { flag: "metAlex" },
   then: [
@@ -673,6 +716,34 @@ condition({
 Variables, choices, PRNG state, surfaces, visuals, audio, and reader history are
 serialized or snapshotted by the runner. That is why rollback can rebuild the
 same moment instead of guessing from renderer DOM.
+
+`input()` is a blocking, rollbackable beat. It writes the submitted text into a
+normal story variable, so it saves and rolls back like other story state.
+
+Use save-persistent variables when the player earns something that should not
+roll back, but should still belong to the current save file:
+
+```js
+saveFlag("cleared_arcade")
+saveVar("arcade_high_score", 50)
+saveAdd("arcade_total_score", 50)
+
+condition({
+  if: { flag: "save:cleared_arcade" },
+  then: [
+    say("guide", "The arcade prize is still yours.")
+  ]
+})
+
+choice([
+  { text: "Claim the arcade prize.", goto: "prize", showIf: "save:cleared_arcade" },
+  { text: "Keep walking.", goto: "walk" }
+])
+```
+
+Save-persistent variables are written into save files and survive rollback. They
+do not survive a brand-new game unless the author sets them again. Use the
+`save:` prefix only when reading them in `condition()` or `showIf`.
 
 `condition()` is the catchall branching command. It checks the current variable
 store, runs the `then` commands when the check passes, tries `elseIf` branches in
@@ -766,6 +837,28 @@ condition({
 
 Use the named forms when they can express the branch, because the validator can
 explain mistakes in plain language.
+
+Persistent cross-playthrough flags are for route completion, endings, and New
+Game+ gates. They live outside saves and rollback:
+
+```js
+persistFlag("route_a_complete")
+
+condition({
+  if: { flag: "persistent:route_a_complete" },
+  then: [
+    say("guide", "A new opening is available.")
+  ]
+})
+
+choice([
+  { text: "Use the new opening.", goto: "new_opening", showIf: "persistent:route_a_complete" },
+  { text: "Start normally.", goto: "normal_opening" }
+])
+```
+
+Use `persistent:` only for cross-playthrough flags. Use `save:` for save-file
+durable variables. Ordinary story variables should stay unprefixed.
 
 `then` and `else` can also be string targets for mark/scene routing. This is the
 legacy form and remains useful when scene structure should split:

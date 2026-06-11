@@ -3,7 +3,7 @@ import {
   buildSceneRegistry,
   buildSurfaceModuleDiscovery,
   resolveFirstSceneId
-} from "./content-discovery.js";
+} from "./content/content-discovery.js";
 
 function testScene(id, overrides = {}) {
   return {

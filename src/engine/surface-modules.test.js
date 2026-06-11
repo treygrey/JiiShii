@@ -10,7 +10,7 @@ import {
   resolveWallpaperAsset,
   surfaceCommandMeta,
   surfaceRendererContract
-} from "./surface-modules.js";
+} from "./surfaces/index.js";
 
 describe("surface module harness", () => {
   it("registers the built-in surfaces", () => {
@@ -54,6 +54,12 @@ describe("surface module harness", () => {
       },
       commands: {
         galleryImage: { blocks: true }
+      },
+      handlers: {
+        galleryImage: {
+          run: () => {},
+          instant: () => {}
+        }
       }
     });
 
@@ -95,6 +101,41 @@ describe("surface module harness", () => {
         icon: null
       }
     });
+  });
+
+  it("defaults launcher-visible phone app modules to app kind", () => {
+    const browserSurface = defineSurfaceModule({
+      id: "browser",
+      phoneApp: { label: "Browser" },
+      renderer: {
+        commands: ["choice", "transition"],
+        projections: ["renderBrowserState"]
+      }
+    });
+
+    expect(browserSurface).toMatchObject({
+      id: "browser",
+      kind: "app",
+      phoneApp: {
+        label: "Browser",
+        icon: null
+      }
+    });
+  });
+
+  it("allows explicitly story-kind surfaces to also appear as phone apps", () => {
+    const messagesSurface = defineSurfaceModule({
+      id: "messages",
+      kind: "story",
+      phoneApp: { label: "Messages" },
+      renderer: {
+        commands: ["messageBeat"],
+        projections: []
+      }
+    });
+
+    expect(messagesSurface.kind).toBe("story");
+    expect(messagesSurface.phoneApp.label).toBe("Messages");
   });
 
   it("rejects unknown surface kinds", () => {
@@ -169,6 +210,47 @@ describe("surface module harness", () => {
     })).toThrow(
       /app command "galleryBeat" cannot block story progress/
     );
+  });
+
+  it("requires instant replay handlers for blocking render commands", () => {
+    expect(() => defineSurfaceModule({
+      id: "quiz",
+      renderer: {
+        commands: ["quizPrompt"],
+        projections: []
+      },
+      commands: {
+        quizPrompt: { kind: "render", blocks: true }
+      },
+      handlers: {
+        quizPrompt: {
+          run: () => {}
+        }
+      }
+    })).toThrow(
+      /blocking render command "quizPrompt" must provide handler "quizPrompt"\.instant/
+    );
+  });
+
+  it("accepts blocking render commands with instant replay handlers", () => {
+    const quizSurface = defineSurfaceModule({
+      id: "quiz",
+      renderer: {
+        commands: ["quizPrompt"],
+        projections: []
+      },
+      commands: {
+        quizPrompt: { kind: "render", blocks: true }
+      },
+      handlers: {
+        quizPrompt: {
+          run: () => {},
+          instant: () => {}
+        }
+      }
+    });
+
+    expect(quizSurface.handlers.quizPrompt.instant).toEqual(expect.any(Function));
   });
 
   it("creates, normalizes, and clones module-owned state slices", () => {

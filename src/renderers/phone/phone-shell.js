@@ -1,4 +1,4 @@
-import { resolveWallpaperAsset } from "../../engine/surface-modules.js";
+import { resolveWallpaperAsset } from "../../engine/surfaces/index.js";
 
 const PHONE_ADVANCE_DEAD_ZONE_EVENTS = ["click", "pointerdown", "pointerup", "wheel"];
 

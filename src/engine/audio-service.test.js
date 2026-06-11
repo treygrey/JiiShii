@@ -17,7 +17,7 @@ class FakeAudio {
   }
 }
 
-const { BrowserAudioService } = await import("./audio-service.js");
+const { BrowserAudioService } = await import("./audio/audio-service.js");
 
 describe("BrowserAudioService", () => {
   beforeEach(() => {

@@ -14,19 +14,19 @@
 //      blocks boot is worse than no check). Missing art is always a warning.
 // =============================================================================
 
-import { parseShowIf } from "../showif.js";
+import { parseShowIf } from "../state/showif.js";
 import { createCommandMeta, requiredSurface, needsSurface } from "../command-meta.js";
-import { createSurfaceRegistry } from "../surface-modules.js";
+import { createSurfaceRegistry } from "../surfaces/index.js";
 import {
   hasIrlPositionPreset,
   hasIrlTransitionPreset,
   listIrlPositionPresets,
   listIrlTransitionPresets
-} from "../irl-stage-direction.js";
+} from "../dom/irl-stage-direction.js";
 import {
   hasBackgroundTransitionPreset,
   listBackgroundTransitionPresets
-} from "../background-transitions.js";
+} from "../dom/background-transitions.js";
 import { didYouMean } from "./suggestions.js";
 
 const PLAYER_ALIASES = new Set(["me", "you", "player"]);
@@ -59,8 +59,16 @@ function collectSetVars(registry) {
   const names = new Set();
   for (const scene of Object.values(registry)) {
     for (const command of scene.script ?? []) {
-      if (command.type === "setFlag" || command.type === "setVar" || command.type === "roll") {
+      if (
+        command.type === "setFlag" ||
+        command.type === "setVar" ||
+        command.type === "roll" ||
+        command.type === "input"
+      ) {
         names.add(command.key);
+      }
+      if (command.type === "setSaveVar") {
+        names.add(`save:${command.key}`);
       }
       if (command.type === "choice") {
         for (const option of command.options ?? []) {
@@ -166,6 +174,7 @@ export function validateScenes(registry, options = {}) {
       globalCharacters,
       authoredPhoneIds,
       audioScenes: options.audioScenes ?? {},
+      videoAssets: options.videoAssets ?? null,
       errors: isTest ? testWarnings : errors,
       warnings: isTest ? testWarnings : warnings
     };
@@ -360,7 +369,10 @@ function validateScene(scene, ctx) {
           }
           if (option.showIf != null && typeof option.showIf === "string") {
             const parsed = parseShowIf(option.showIf);
-            if (parsed && !ctx.setVars.has(parsed.name)) {
+            // `persistent:` names read cross-playthrough flags, which can be
+            // set by other games sessions or other scripts — not statically
+            // checkable, so they are exempt from the never-set check.
+            if (parsed && !parsed.name.startsWith("persistent:") && !ctx.setVars.has(parsed.name)) {
               ctx.errors.push(`${where}: showIf "${option.showIf}" mentions "${parsed.name}", which is never set anywhere.${didYouMean(parsed.name, [...ctx.setVars])}`);
             }
           }
@@ -421,10 +433,22 @@ function validateScene(scene, ctx) {
         break;
       case "setFlag":
       case "setVar":
+      case "setSaveVar":
       case "roll":
+      case "persistFlag":
         validateRequiredString(command.key, `${where}: ${command.type} needs a variable name.`, ctx);
         if (command.type === "roll") {
           validateRollRange(command, where, ctx);
+        }
+        break;
+      case "input":
+        validateRequiredString(command.key, `${where}: input() needs a variable name to store the answer in.`, ctx);
+        validateOptionalNumber(command.maxLength, `${where}: input() maxLength`, ctx, { min: 1 });
+        break;
+      case "video":
+        validateRequiredString(command.id, `${where}: video() needs a video asset id.`, ctx);
+        if (ctx.videoAssets && command.id && !ctx.videoAssets.has(command.id)) {
+          ctx.errors.push(`${where}: video("${command.id}") is not a discovered video asset.${didYouMean(command.id, [...ctx.videoAssets])}`);
         }
         break;
       case "phoneApps":

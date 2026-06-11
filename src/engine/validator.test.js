@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { validateScenes as validateSceneRegistry } from "./validator.js";
-import { BUILTIN_SURFACE_MODULES, defineSurfaceModule } from "./surface-modules.js";
+import { validateScenes as validateSceneRegistry } from "./validation/index.js";
+import { BUILTIN_SURFACE_MODULES, defineSurfaceModule } from "./surfaces/index.js";
 import {
   background,
   ambience,
@@ -52,7 +52,7 @@ import {
   socialLike,
   socialPost,
   voice
-} from "./commands.js";
+} from "./commands/index.js";
 
 /**
  * Builds the registry shape validateScenes expects.

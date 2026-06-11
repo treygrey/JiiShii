@@ -6,7 +6,13 @@ export const DEFAULT_GAME_CONFIG = {
   footer: "",
   about: "A visual novel built with JiiShii.",
   firstSceneId: null,
+  storageNamespace: null,
   audioScenes: {},
+  display: {
+    aspectRatio: "16:9",
+    aspectRatioValue: 16 / 9,
+    narrationMaxChars: 80
+  },
   phone: {
     enabled: true,
     button: true,
@@ -37,10 +43,19 @@ export const DEFAULT_GAME_CONFIG = {
     autosave: "jiishii-autosave",
     settings: "jiishii-settings",
     slotPrefix: "jiishii-save-slot-",
+    persistent: "jiishii-persistent",
     legacySave: null,
     legacyAutosave: null,
     legacySettings: null,
     legacySlotPrefix: null
+  },
+  extras: {
+    title: "Extras",
+    galleryTitle: "Gallery",
+    musicTitle: "Music",
+    lockedLabel: "???",
+    gallery: [],
+    music: []
   }
 };
 
@@ -54,6 +69,8 @@ export const DEFAULT_GAME_CONFIG = {
 export function normalizeGameConfig(config = {}) {
   const shell = config.shell ?? {};
   const storage = config.storage ?? {};
+  const storageNamespace = normalizeStorageNamespace(config.storageNamespace);
+  const namespaceStorage = storageNamespace ? storageKeysFromNamespace(storageNamespace) : {};
 
   return {
     title: config.title ?? DEFAULT_GAME_CONFIG.title,
@@ -61,7 +78,9 @@ export function normalizeGameConfig(config = {}) {
     footer: config.footer ?? DEFAULT_GAME_CONFIG.footer,
     about: config.about ?? DEFAULT_GAME_CONFIG.about,
     firstSceneId: config.firstSceneId ?? DEFAULT_GAME_CONFIG.firstSceneId,
+    storageNamespace,
     audioScenes: normalizeAudioScenes(config.audioScenes),
+    display: normalizeDisplayConfig(config.display),
     phone: normalizePhoneConfig(config.phone),
     shell: {
       saveTitle: shell.saveTitle ?? DEFAULT_GAME_CONFIG.shell.saveTitle,
@@ -87,16 +106,153 @@ export function normalizeGameConfig(config = {}) {
       returnToTitleLabel: shell.returnToTitleLabel ?? DEFAULT_GAME_CONFIG.shell.returnToTitleLabel
     },
     storage: {
-      save: storage.save ?? DEFAULT_GAME_CONFIG.storage.save,
-      autosave: storage.autosave ?? DEFAULT_GAME_CONFIG.storage.autosave,
-      settings: storage.settings ?? DEFAULT_GAME_CONFIG.storage.settings,
-      slotPrefix: storage.slotPrefix ?? DEFAULT_GAME_CONFIG.storage.slotPrefix,
+      save: storage.save ?? namespaceStorage.save ?? DEFAULT_GAME_CONFIG.storage.save,
+      autosave: storage.autosave ?? namespaceStorage.autosave ?? DEFAULT_GAME_CONFIG.storage.autosave,
+      settings: storage.settings ?? namespaceStorage.settings ?? DEFAULT_GAME_CONFIG.storage.settings,
+      slotPrefix: storage.slotPrefix ?? namespaceStorage.slotPrefix ?? DEFAULT_GAME_CONFIG.storage.slotPrefix,
+      persistent: storage.persistent ?? namespaceStorage.persistent ?? DEFAULT_GAME_CONFIG.storage.persistent,
       legacySave: storage.legacySave ?? DEFAULT_GAME_CONFIG.storage.legacySave,
       legacyAutosave: storage.legacyAutosave ?? DEFAULT_GAME_CONFIG.storage.legacyAutosave,
       legacySettings: storage.legacySettings ?? DEFAULT_GAME_CONFIG.storage.legacySettings,
       legacySlotPrefix: storage.legacySlotPrefix ?? DEFAULT_GAME_CONFIG.storage.legacySlotPrefix
-    }
+    },
+    extras: normalizeExtras(config.extras)
   };
+}
+
+/**
+ * Normalizes author-controlled display constraints.
+ *
+ * @param {unknown} display - Candidate display config.
+ * @returns {{ aspectRatio: string, aspectRatioValue: number|null, narrationMaxChars: number }} Display config.
+ */
+function normalizeDisplayConfig(display) {
+  const source = display && typeof display === "object" && !Array.isArray(display) ? display : {};
+  const aspect = normalizeAspectRatio(source.aspectRatio, DEFAULT_GAME_CONFIG.display.aspectRatio);
+  return {
+    aspectRatio: aspect.label,
+    aspectRatioValue: aspect.value,
+    narrationMaxChars: normalizePositiveInteger(
+      source.narrationMaxChars,
+      DEFAULT_GAME_CONFIG.display.narrationMaxChars
+    )
+  };
+}
+
+/**
+ * Normalizes aspect ratio strings such as "16:9", "4/3", or "free".
+ *
+ * @param {unknown} value - Candidate aspect ratio.
+ * @param {string} fallback - Fallback aspect ratio.
+ * @returns {{ label: string, value: number|null }} Ratio label and numeric value.
+ */
+function normalizeAspectRatio(value, fallback) {
+  const text = typeof value === "string" && value.trim() ? value.trim().toLowerCase() : fallback;
+  if (text === "free" || text === "fluid" || text === "responsive") {
+    return { label: "free", value: null };
+  }
+  const match = text.match(/^(\d+(?:\.\d+)?)\s*[:/]\s*(\d+(?:\.\d+)?)$/);
+  if (match) {
+    const width = Number(match[1]);
+    const height = Number(match[2]);
+    if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
+      return { label: `${trimRatioNumber(width)}:${trimRatioNumber(height)}`, value: width / height };
+    }
+  }
+  if (text !== fallback) {
+    return normalizeAspectRatio(fallback, DEFAULT_GAME_CONFIG.display.aspectRatio);
+  }
+  return { label: "16:9", value: 16 / 9 };
+}
+
+/**
+ * Formats an aspect ratio component without unnecessary trailing decimals.
+ *
+ * @param {number} value - Ratio component.
+ * @returns {string} Compact component.
+ */
+function trimRatioNumber(value) {
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
+}
+
+/**
+ * Normalizes the optional storage namespace shortcut.
+ *
+ * @param {unknown} value - Candidate namespace.
+ * @returns {string|null} Trimmed namespace or null.
+ */
+function normalizeStorageNamespace(value) {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
+/**
+ * Creates default storage keys from a game-specific namespace.
+ *
+ * @param {string} namespace - Game storage namespace.
+ * @returns {object} Derived storage keys.
+ */
+function storageKeysFromNamespace(namespace) {
+  return {
+    save: `${namespace}-save`,
+    autosave: `${namespace}-autosave`,
+    settings: `${namespace}-settings`,
+    slotPrefix: `${namespace}-save-slot-`,
+    persistent: `${namespace}-persistent`
+  };
+}
+
+/**
+ * Normalizes the extras (gallery/music room) configuration. Entries name
+ * discovered asset ids; the shell shows them locked until the persistent
+ * unlock record contains the id.
+ *
+ * @param {unknown} extras - Candidate extras config.
+ * @returns {object} Normalized extras config.
+ */
+function normalizeExtras(extras) {
+  const source = extras && typeof extras === "object" ? extras : {};
+  const defaults = DEFAULT_GAME_CONFIG.extras;
+  return {
+    title: typeof source.title === "string" && source.title.trim() ? source.title : defaults.title,
+    galleryTitle: typeof source.galleryTitle === "string" && source.galleryTitle.trim()
+      ? source.galleryTitle
+      : defaults.galleryTitle,
+    musicTitle: typeof source.musicTitle === "string" && source.musicTitle.trim()
+      ? source.musicTitle
+      : defaults.musicTitle,
+    lockedLabel: typeof source.lockedLabel === "string" && source.lockedLabel.trim()
+      ? source.lockedLabel
+      : defaults.lockedLabel,
+    gallery: normalizeExtrasEntries(source.gallery),
+    music: normalizeExtrasEntries(source.music)
+  };
+}
+
+/**
+ * Normalizes one extras entry list to `{ id, title }` records.
+ *
+ * @param {unknown} entries - Candidate entry list.
+ * @returns {Array<{ id: string, title: string }>} Normalized entries.
+ */
+function normalizeExtrasEntries(entries) {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+  return entries
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return { id: entry, title: entry };
+      }
+      if (entry && typeof entry === "object" && typeof entry.id === "string" && entry.id) {
+        return { id: entry.id, title: typeof entry.title === "string" && entry.title ? entry.title : entry.id };
+      }
+      return null;
+    })
+    .filter(Boolean);
 }
 
 /**

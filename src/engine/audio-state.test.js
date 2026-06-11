@@ -8,7 +8,7 @@ import {
   cloneAudioState,
   createAudioState,
   normalizeAudioState
-} from "./audio-state.js";
+} from "./audio/audio-state.js";
 
 describe("audio state helpers", () => {
   it("creates empty durable audio state", () => {

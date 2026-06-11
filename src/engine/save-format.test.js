@@ -6,7 +6,7 @@ import {
   SAVE_KIND_SNAPSHOT,
   SAVE_SCHEMA_VERSION
 } from "./save-format.js";
-import { createSurfaceRegistry } from "./surface-modules.js";
+import { createSurfaceRegistry } from "./surfaces/index.js";
 
 /**
  * Creates the standard test surface registry for save migration coverage.

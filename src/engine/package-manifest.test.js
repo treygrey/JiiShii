@@ -19,6 +19,8 @@ describe("game package manifest", () => {
     expect(classifyPackageFile("scenes/start.js")).toBe("scene");
     expect(classifyPackageFile("surface-modules/browser.js")).toBe("surfaceModule");
     expect(classifyPackageFile("assets/audio/sfx/tap.wav")).toBe("audio");
+    expect(classifyPackageFile("assets/cutscenes/intro.webm")).toBe("video");
+    expect(classifyPackageFile("assets/cutscenes/ending.mp4")).toBe("video");
     expect(classifyPackageFile("assets/backgrounds/room-day.webp")).toBe("image");
     expect(classifyPackageFile("assets/sprites/alex/default/head.png")).toBe("sprite");
   });
@@ -42,7 +44,8 @@ describe("game package manifest", () => {
       { path: "game.config.js", size: 10, mtime: 100, sha256: "config-hash" },
       { path: "vn.js", size: 20, mtime: 200, sha256: "api-hash" },
       { path: "scenes/start.js", size: 30, mtime: 300, sha256: "scene-hash" },
-      { path: "assets/backgrounds/room-day.png", size: 40, mtime: 400 }
+      { path: "assets/backgrounds/room-day.png", size: 40, mtime: 400 },
+      { path: "assets/cutscenes/intro.webm", size: 50, mtime: 500 }
     ]);
     const normalized = normalizeGameManifest(manifest);
     const report = validateGameManifest(normalized);
@@ -50,6 +53,7 @@ describe("game package manifest", () => {
     expect(normalized.entry.config).toBe("game.config.js");
     expect(normalized.entry.scenes).toEqual(["scenes/start.js"]);
     expect(normalized.files["scenes/start.js"].sha256).toBe("scene-hash");
+    expect(normalized.files["assets/cutscenes/intro.webm"].kind).toBe("video");
     expect(report.errors).toEqual([]);
   });
 
@@ -95,10 +99,12 @@ describe("game package manifest", () => {
     try {
       mkdirSync(join(root, "scenes"), { recursive: true });
       mkdirSync(join(root, "assets", "audio", "sfx"), { recursive: true });
+      mkdirSync(join(root, "assets", "cutscenes"), { recursive: true });
       writeFileSync(join(root, "game.config.js"), "export const GAME_CONFIG = {};\n");
       writeFileSync(join(root, "vn.js"), "export const scene = globalThis.__JIISHII_AUTHOR_API__.scene;\n");
       writeFileSync(join(root, "scenes", "start.js"), "export default { id: 'start', script: [] };\n");
       writeFileSync(join(root, "assets", "audio", "sfx", "tap.wav"), "");
+      writeFileSync(join(root, "assets", "cutscenes", "intro.webm"), "");
 
       const manifest = generateGameManifest({ root, mode: "dev" });
       const written = JSON.parse(readFileSync(join(root, "game.manifest.json"), "utf8"));
@@ -106,6 +112,7 @@ describe("game package manifest", () => {
       expect(manifest.entry.scenes).toEqual(["scenes/start.js"]);
       expect(manifest.files["game.config.js"].sha256).toEqual(expect.any(String));
       expect(manifest.files["assets/audio/sfx/tap.wav"].sha256).toBeUndefined();
+      expect(manifest.files["assets/cutscenes/intro.webm"].kind).toBe("video");
       expect(written.files["vn.js"].kind).toBe("authorApi");
     } finally {
       rmSync(root, { recursive: true, force: true });

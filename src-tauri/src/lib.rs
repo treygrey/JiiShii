@@ -430,6 +430,8 @@ fn classify_package_file(relative_path: &str) -> String {
         "audio"
     } else if lower.starts_with("assets/sprites/") && extension == "png" {
         "sprite"
+    } else if lower.starts_with("assets/") && is_video_extension(extension) {
+        "video"
     } else if lower.starts_with("assets/") && is_image_extension(extension) {
         "image"
     } else if is_script_extension(extension) {
@@ -454,6 +456,10 @@ fn is_script_extension(extension: &str) -> bool {
 
 fn is_audio_extension(extension: &str) -> bool {
     matches!(extension, "mp3" | "ogg" | "wav" | "m4a" | "flac")
+}
+
+fn is_video_extension(extension: &str) -> bool {
+    matches!(extension, "webm" | "mp4" | "m4v" | "ogv")
 }
 
 fn is_image_extension(extension: &str) -> bool {
@@ -516,6 +522,9 @@ fn mime_for_path(path: &Path) -> &'static str {
         "wav" => "audio/wav",
         "m4a" => "audio/mp4",
         "flac" => "audio/flac",
+        "webm" => "video/webm",
+        "mp4" | "m4v" => "video/mp4",
+        "ogv" => "video/ogg",
         _ => "application/octet-stream",
     }
 }

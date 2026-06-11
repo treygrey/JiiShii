@@ -7,7 +7,7 @@ import {
   registerIrlSpriteTransition,
   resolveIrlPlacement,
   resolveIrlTransition
-} from "./irl-stage-direction.js";
+} from "./dom/irl-stage-direction.js";
 
 describe("IRL stage direction registry", () => {
   it("resolves named positions into concrete placement values", () => {

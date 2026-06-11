@@ -1,4 +1,4 @@
-import { GALLERY_SURFACE } from "../../engine/surface-modules.js";
+import { GALLERY_SURFACE } from "../../engine/surfaces/index.js";
 import { PhoneShell, stopPhoneStoryAdvance } from "./phone-shell.js";
 
 /**

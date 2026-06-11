@@ -30,6 +30,9 @@ export function createChoiceBand(choiceCommand, onSelect) {
   for (const option of choiceCommand.options) {
     const button = document.createElement("button");
     button.className = "irl-choice-option";
+    if (option.seen) {
+      button.classList.add("is-seen");
+    }
     button.setAttribute("role", "option");
     button.type = "button";
     button.textContent = option.text;

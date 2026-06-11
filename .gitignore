@@ -40,6 +40,7 @@ test-results/
 Thumbs.db
 .vscode/
 .idea/
+.claude/
 
 # Optional packaged game saves/exports
 *.save

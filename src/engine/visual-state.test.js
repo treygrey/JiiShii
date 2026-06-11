@@ -13,7 +13,7 @@ import {
   setStreamTitleState,
   setStreamWindowState,
   setTextingThread
-} from "./visual-state.js";
+} from "./state/visual-state.js";
 
 describe("visual state helpers", () => {
   it("tracks background state", () => {

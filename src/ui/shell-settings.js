@@ -1,6 +1,9 @@
 export const DEFAULT_SHELL_SETTINGS = {
   textSpeed: 0.6,
   autoDelay: 1600,
+  skipMode: "seen",
+  fontScale: 1,
+  reducedMotion: "system",
   masterVolume: 1,
   musicVolume: 0.85,
   ambienceVolume: 0.85,
@@ -30,6 +33,9 @@ export function normalizeShellSettings(settings = {}) {
 
   normalized.textSpeed = clampNumber(settings.textSpeed, 0, 1, normalized.textSpeed);
   normalized.autoDelay = clampNumber(settings.autoDelay, 400, 4000, normalized.autoDelay);
+  normalized.skipMode = normalizeSkipMode(settings.skipMode, normalized.skipMode);
+  normalized.fontScale = clampNumber(settings.fontScale, 0.85, 1.3, normalized.fontScale);
+  normalized.reducedMotion = normalizeReducedMotion(settings.reducedMotion, normalized.reducedMotion);
   for (const key of VOLUME_KEYS) {
     normalized[key] = clampNumber(settings[key], 0, 1, normalized[key]);
   }
@@ -84,6 +90,28 @@ export function autoDelayLabel(value) {
  */
 export function volumeLabel(value) {
   return `${Math.round(value * 100)}%`;
+}
+
+/**
+ * Returns a supported skip mode, falling back to the default seen-text mode.
+ *
+ * @param {unknown} value - Candidate skip mode.
+ * @param {"seen"|"all"} fallback - Fallback mode.
+ * @returns {"seen"|"all"} Normalized skip mode.
+ */
+function normalizeSkipMode(value, fallback) {
+  return value === "all" || value === "seen" ? value : fallback;
+}
+
+/**
+ * Returns a supported reduced-motion preference.
+ *
+ * @param {unknown} value - Candidate preference.
+ * @param {"system"|"on"|"off"} fallback - Fallback preference.
+ * @returns {"system"|"on"|"off"} Normalized preference.
+ */
+function normalizeReducedMotion(value, fallback) {
+  return value === "system" || value === "on" || value === "off" ? value : fallback;
 }
 
 /**

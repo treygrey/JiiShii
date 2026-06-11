@@ -4,7 +4,7 @@ import {
   normalizeGalleryState,
   normalizePhoneState,
   normalizeSocialState
-} from "../../phone-state.js";
+} from "../../state/phone-state.js";
 
 export const PHONE_HOME_SURFACE = defineSurfaceModule({
   id: "phone_home",

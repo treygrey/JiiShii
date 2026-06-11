@@ -9,7 +9,7 @@
 
 import { createSpriteState, normalizeSpriteState } from "./sprite-state.js";
 import { createVisualState, normalizeVisualState } from "./visual-state.js";
-import { createAudioState, normalizeAudioState } from "../audio-state.js";
+import { createAudioState, normalizeAudioState } from "../audio/audio-state.js";
 import { createHistoryState, normalizeHistoryState } from "./history-state.js";
 
 /** Default PRNG seed. Fixed so a fresh game is reproducible for testing. */
@@ -32,6 +32,12 @@ export function createInitialState() {
     // Unified variable store. Flags are just boolean vars; stats are just
     // numeric vars. One namespace = one source of truth.
     vars: {},
+    // Save-persistent variables survive rollback and are stored in save files,
+    // but they are not cross-playthrough persistent data.
+    saveVars: {},
+    // Save-var commands are non-rollbackable, so each script command applies
+    // at most once per save file to prevent relative mutations from doubling.
+    saveVarEvents: {},
     // Seeded PRNG state. All AUTHORED randomness (roll, random branches) draws
     // from here so replay/rollback reproduce identical results. Cosmetic-only
     // randomness (chat-pop jitter) may use Math.random since it never touches
@@ -54,6 +60,12 @@ export function createInitialState() {
 export function migrateState(saved) {
   if (!saved.vars) {
     saved.vars = { ...(saved.stats ?? {}), ...(saved.flags ?? {}) };
+  }
+  if (!saved.saveVars || typeof saved.saveVars !== "object" || Array.isArray(saved.saveVars)) {
+    saved.saveVars = {};
+  }
+  if (!saved.saveVarEvents || typeof saved.saveVarEvents !== "object" || Array.isArray(saved.saveVarEvents)) {
+    saved.saveVarEvents = {};
   }
   if (typeof saved.rng !== "number") {
     saved.rng = DEFAULT_SEED >>> 0;

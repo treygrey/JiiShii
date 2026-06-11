@@ -10,7 +10,7 @@
 //   say("alex", "you owe me {$debt} dollars")           -> interpolates a var
 //
 // Built-in macros: b, i, u, s, color(param). Add your own anywhere:
-//   import { registerMarkup } from "../engine/markup.js";
+//   import { registerMarkup } from "../engine/dom/markup.js";
 //   registerMarkup("whisper", "mk-whisper");   // then define .mk-whisper in CSS
 //   registerMarkup("shake", { class: "mk-shake" });
 //

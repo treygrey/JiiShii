@@ -233,7 +233,7 @@ For game-specific presentation changes, edit:
 
 - `src/renderers/phone/social-renderer.js` for app structure, tabs, account rows, and post layout.
 - `src/styles.css` for `.social-*` classes, spacing, colors, and typography.
-- `src/engine/phone-state.js` if the app needs new saved social fields.
+- `src/engine/state/phone-state.js` if the app needs new saved social fields.
 
 Keep Social display-first unless the story really needs stronger interaction. If a social action matters to story logic, put that action behind a flag (`likeFlag`, `followFlag`, or a scene command) so it is visible in state and save/load.
 
@@ -244,7 +244,7 @@ A phone app is a normal surface module with `phoneApp` metadata. Drop a `.js` fi
 Minimal surface module:
 
 ```js
-import { defineSurfaceModule } from "../../engine/surface-modules.js";
+import { defineSurfaceModule } from "../../engine/surfaces/index.js";
 
 export const PINBALL_SURFACE = defineSurfaceModule({
   id: "pinball",

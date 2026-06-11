@@ -1,7 +1,7 @@
-import { cloneAudioState } from "./audio-state.js";
-import { cloneHistoryState } from "./history-state.js";
-import { cloneSurfaceState, createSurfaceRegistry, createSurfaceState } from "./surface-modules.js";
-import { createInitialState, migrateState } from "./state.js";
+import { cloneAudioState } from "./audio/audio-state.js";
+import { cloneHistoryState } from "./state/history-state.js";
+import { cloneSurfaceState, createSurfaceRegistry, createSurfaceState } from "./surfaces/index.js";
+import { createInitialState, migrateState } from "./state/index.js";
 
 /** Current save-envelope schema version. */
 export const SAVE_SCHEMA_VERSION = 1;
@@ -67,6 +67,8 @@ export function createSceneEntrySave({ state, checkpoint, surfaceRegistry, label
     surfaceStack: structuredClone(checkpoint?.surfaceStack ?? []),
     phoneNavigationSurface: checkpoint?.phoneNavigationSurface ?? null,
     vars: structuredClone(checkpoint?.vars ?? state.vars ?? {}),
+    saveVars: structuredClone(state.saveVars ?? checkpoint?.saveVars ?? {}),
+    saveVarEvents: structuredClone(state.saveVarEvents ?? checkpoint?.saveVarEvents ?? {}),
     rng: checkpoint?.rng ?? state.rng,
     choicesMade: structuredClone(checkpoint?.choicesMade ?? []),
     audio: structuredClone(checkpoint?.audio ?? undefined),
@@ -115,6 +117,8 @@ export function createSnapshotSave({ state, commandIndex = null, lastSpeaker = n
     surfaceStack: structuredClone(state.surfaceStack ?? []),
     phoneNavigationSurface: state.phoneNavigationSurface ?? null,
     vars: structuredClone(state.vars ?? {}),
+    saveVars: structuredClone(state.saveVars ?? {}),
+    saveVarEvents: structuredClone(state.saveVarEvents ?? {}),
     rng: state.rng,
     choicesMade: structuredClone(state.choicesMade ?? []),
     audio: cloneAudioState(state.audio),
@@ -198,6 +202,8 @@ export function migrateSaveEnvelope(parsedSave, surfaceRegistry) {
     surfaceStack: structuredClone(parsedSave.surfaceStack ?? []),
     phoneNavigationSurface: parsedSave.phoneNavigationSurface ?? null,
     vars: structuredClone(parsedSave.vars ?? parsedSave.stats ?? parsedSave.flags ?? {}),
+    saveVars: structuredClone(parsedSave.saveVars ?? {}),
+    saveVarEvents: structuredClone(parsedSave.saveVarEvents ?? {}),
     rng: parsedSave.rng,
     choicesMade: structuredClone(parsedSave.choicesMade ?? []),
     audio: structuredClone(parsedSave.audio ?? undefined),

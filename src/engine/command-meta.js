@@ -10,7 +10,7 @@
 //   blocks       true if it parks on player input (a beat or a decision)
 // =============================================================================
 
-import { BUILTIN_SURFACE_MODULES, surfaceCommandMeta } from "./surface-modules.js";
+import { BUILTIN_SURFACE_MODULES, surfaceCommandMeta } from "./surfaces/index.js";
 
 /** @type {Record<string, { kind: string, surface?: string|null, needsSurface?: boolean, blocks?: boolean }>} */
 export const BASE_COMMAND_META = {
@@ -31,8 +31,10 @@ export const BASE_COMMAND_META = {
 
   // --- State mutation ---
   setVar: { kind: "state" },
+  setSaveVar: { kind: "state" },
   setFlag: { kind: "state" },
   roll: { kind: "state" },
+  persistFlag: { kind: "state" },
   openPhone: { kind: "stage" },
 
   // --- Rendering: surface-agnostic (compositor-owned) ---
@@ -44,6 +46,8 @@ export const BASE_COMMAND_META = {
   say: { kind: "render", surface: null, needsSurface: true, blocks: true },
   choice: { kind: "render", surface: null, needsSurface: true, blocks: true },
   transition: { kind: "render", surface: null, needsSurface: false, blocks: true },
+  input: { kind: "render", surface: null, needsSurface: false, blocks: true },
+  video: { kind: "render", surface: null, needsSurface: false, blocks: true },
 
   // --- Audio: runner-owned ---
   music: { kind: "audio", surface: null, needsSurface: false },

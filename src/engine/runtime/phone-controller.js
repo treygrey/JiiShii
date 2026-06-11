@@ -1,7 +1,7 @@
 import {
   clearPhoneNotification,
   hasUnreadPhoneNotifications as phoneHasUnreadPhoneNotifications
-} from "../phone-state.js";
+} from "../state/phone-state.js";
 
 /**
  * Builds launcher metadata from registered surface modules. Custom authors can

@@ -3,7 +3,7 @@ import {
   buildAssetRegistry,
   imageIdsFromPath,
   assetIdFromPathText
-} from "../engine/asset-discovery.js";
+} from "../engine/assets/asset-discovery.js";
 
 const IMAGE_MODULES = import.meta.glob(
   [
@@ -81,4 +81,42 @@ export function resolveImageAmbiguity(id) {
  */
 export function listImageIds() {
   return Object.keys(IMAGE_ASSETS);
+}
+
+const VIDEO_MODULES = import.meta.glob(
+  [
+    "./assets/**/*.{webm,mp4,m4v,ogv}",
+    "!./assets/**/*OLD.{webm,mp4,m4v,ogv}"
+  ],
+  {
+    eager: true,
+    query: "?url",
+    import: "default"
+  }
+);
+
+const VIDEO_DISCOVERY = buildAssetDiscovery(VIDEO_MODULES, {
+  idsFromPath: imageIdsFromPath,
+  aliases: {}
+});
+
+export const VIDEO_ASSETS = VIDEO_DISCOVERY.assets;
+
+/**
+ * Resolves a video id to a URL, or null when no cutscene is registered.
+ *
+ * @param {string} id - Video asset id referenced by a video() command.
+ * @returns {string | null} Resolvable URL or null.
+ */
+export function resolveVideo(id) {
+  return VIDEO_ASSETS[id] ?? null;
+}
+
+/**
+ * Lists known video asset ids.
+ *
+ * @returns {string[]} Video asset ids.
+ */
+export function listVideoIds() {
+  return Object.keys(VIDEO_ASSETS);
 }

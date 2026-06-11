@@ -12,7 +12,7 @@ import {
   cloneSpriteState,
   createSpriteState,
   normalizeSpriteState
-} from "./sprite-state.js";
+} from "./state/sprite-state.js";
 
 function characters() {
   return new Map([

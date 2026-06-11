@@ -1,13 +1,15 @@
 import "./styles.css";
-import { validateScenes } from "./engine/validator.js";
-import { normalizeGameConfig } from "./engine/game-config.js";
-import { createInitialState } from "./engine/state.js";
+import { validateScenes } from "./engine/validation/index.js";
+import { normalizeGameConfig } from "./engine/config/game-config.js";
+import { createInitialState } from "./engine/state/index.js";
 import { readSaveMetadata } from "./engine/save-format.js";
-import { SceneRunner } from "./engine/runner.js";
-import { LayerCompositor } from "./engine/layer-compositor.js";
-import { BackgroundTransitioner } from "./engine/background-transitioner.js";
-import { BrowserAudioService } from "./engine/audio-service.js";
-import { setMarkupVarsProvider } from "./engine/markup.js";
+import { SceneRunner } from "./engine/runtime/scene-runner.js";
+import { LayerCompositor } from "./engine/dom/layer-compositor.js";
+import { BackgroundTransitioner } from "./engine/dom/background-transitioner.js";
+import { BrowserAudioService } from "./engine/audio/audio-service.js";
+import { setMarkupVarsProvider } from "./engine/dom/markup.js";
+import { loadPersistentState } from "./engine/runtime/persistent-controller.js";
+import { isExtraUnlocked } from "./engine/state/persistent-state.js";
 import { createDebugOverlay } from "./ui/debug-overlay.js";
 import { createHistoryRows, historySurfaceLabel } from "./ui/shell-history.js";
 import { createSaveSlotView } from "./ui/shell-save-slots.js";
@@ -37,6 +39,8 @@ let GLOBAL_CHARACTERS = null;
 let listImageIds = null;
 let resolveImage = null;
 let resolveImageAmbiguity = null;
+let resolveVideo = null;
+let listVideoIds = null;
 let listAudioIds = null;
 let resolveAudio = null;
 let resolveAudioAmbiguity = null;
@@ -75,6 +79,7 @@ let END_DEFAULT_MESSAGE = null;
 let MISSING_TARGET_MESSAGE = null;
 let RETURN_TO_TITLE_LABEL = null;
 let PHONE_CONFIG = null;
+let DISPLAY_CONFIG = null;
 let settings = null;
 let runner = null;
 let autoOn = false;
@@ -87,6 +92,7 @@ let mainMenu = null;
 let phoneButton = null;
 let stageBg = null;
 let backgrounds = null;
+let motionMediaQuery = null;
 
 bootApp().catch((error) => {
   console.error(error);
@@ -149,6 +155,8 @@ async function bootApp() {
     listImageIds,
     resolveImage,
     resolveImageAmbiguity,
+    resolveVideo,
+    listVideoIds,
     listAudioIds,
     resolveAudio,
     resolveAudioAmbiguity,
@@ -191,7 +199,10 @@ async function bootApp() {
   MISSING_TARGET_MESSAGE = GAME.shell.missingTargetMessage;
   RETURN_TO_TITLE_LABEL = GAME.shell.returnToTitleLabel;
   PHONE_CONFIG = GAME.phone;
+  DISPLAY_CONFIG = GAME.display;
   settings = loadSettings();
+  motionMediaQuery = window.matchMedia?.("(prefers-reduced-motion: reduce)") ?? null;
+  motionMediaQuery?.addEventListener?.("change", applyPresentationSettings);
 
   if (import.meta.env.DEV) {
     window.__JIISHII_TEST__ = {
@@ -206,6 +217,8 @@ async function bootApp() {
 
   appRoot = document.querySelector("#app");
   appRoot.innerHTML = buildShell();
+  applyDisplayConfig();
+  applyPresentationSettings();
   stage = appRoot.querySelector("#game-stage");
   quickMenu = appRoot.querySelector(".quick-menu");
   mainMenu = appRoot.querySelector("#main-menu");
@@ -322,7 +335,8 @@ function validateActiveScenes() {
     listExpressions,
     listBodies,
     listOutfits,
-    listMissingRequiredSpriteLayers
+    listMissingRequiredSpriteLayers,
+    videoAssets: typeof listVideoIds === "function" ? new Set(listVideoIds()) : null
   });
   sceneCheck.warnings.forEach((warning) => console.warn(`[scene check] ${warning}`));
   if (sceneCheck.testWarnings?.length) {
@@ -397,6 +411,7 @@ function buildShell() {
           <nav class="menu-nav">
             <button type="button" data-m="start">Start</button>
             <button type="button" data-m="continue">Continue</button>
+            <button type="button" data-m="extras">Extras</button>
             <button type="button" data-m="prefs">Preferences</button>
             <button type="button" data-m="about">About</button>
           </nav>
@@ -416,6 +431,26 @@ function buildShell() {
             <label for="pref-auto">Auto-forward time</label>
             <input id="pref-auto" type="range" min="400" max="4000" step="100" />
             <span class="pref-val" data-auto-val></span>
+          </div>
+          <div class="pref-row pref-row--select">
+            <label for="pref-skip-mode">Skip mode</label>
+            <select id="pref-skip-mode">
+              <option value="seen">Seen text only</option>
+              <option value="all">All text</option>
+            </select>
+          </div>
+          <div class="pref-row">
+            <label for="pref-font-scale">Font scale</label>
+            <input id="pref-font-scale" type="range" min="0.85" max="1.3" step="0.05" />
+            <span class="pref-val" data-font-scale-val></span>
+          </div>
+          <div class="pref-row pref-row--select">
+            <label for="pref-motion">Motion</label>
+            <select id="pref-motion">
+              <option value="system">System</option>
+              <option value="on">Reduced</option>
+              <option value="off">Full</option>
+            </select>
           </div>
           <div class="pref-row">
             <label for="pref-master">Master volume</label>
@@ -470,6 +505,24 @@ function buildShell() {
         </div>
       </div>
 
+      <div class="overlay" id="extras-overlay" hidden>
+        <div class="overlay-card overlay-card--tall">
+          <header class="overlay-head"><h2 id="extras-title">Extras</h2><button type="button" data-close>Close</button></header>
+          <div class="extras-section">
+            <h3 class="extras-heading" data-extras-gallery-title></h3>
+            <div class="extras-grid" data-extras-gallery></div>
+          </div>
+          <div class="extras-section">
+            <h3 class="extras-heading" data-extras-music-title></h3>
+            <div class="extras-music" data-extras-music></div>
+          </div>
+          <div class="extras-viewer" data-extras-viewer hidden>
+            <button type="button" class="extras-viewer-close" data-extras-viewer-close>Close</button>
+            <img alt="" />
+          </div>
+        </div>
+      </div>
+
       <div class="overlay overlay--solid" id="end-overlay" hidden>
         <div class="end-card">
           <p class="end-kicker">${escapeHtml(END_KICKER)}</p>
@@ -514,6 +567,51 @@ function setBackground(id, options = {}) {
 function clearBackground() {
   backgrounds.clear();
   stageBg.classList.remove("is-visible");
+}
+
+/**
+ * Applies author-controlled display constraints to the root frame.
+ *
+ * @returns {void}
+ */
+function applyDisplayConfig() {
+  const root = appRoot?.querySelector(".vn-root");
+  if (!root || !DISPLAY_CONFIG) {
+    return;
+  }
+  const ratio = DISPLAY_CONFIG.aspectRatioValue;
+  root.classList.toggle("vn-root--locked-aspect", Number.isFinite(ratio));
+  root.style.setProperty("--stage-aspect", Number.isFinite(ratio) ? String(ratio) : "1.7777778");
+  root.style.setProperty("--narration-max-ch", String(DISPLAY_CONFIG.narrationMaxChars ?? 80));
+}
+
+/**
+ * Applies live player presentation/accessibility settings.
+ *
+ * @returns {void}
+ */
+function applyPresentationSettings() {
+  const root = appRoot?.querySelector(".vn-root");
+  if (!root || !settings) {
+    return;
+  }
+  root.style.setProperty("--font-scale", String(settings.fontScale ?? 1));
+  root.classList.toggle("is-reduced-motion", shouldReduceMotion());
+}
+
+/**
+ * Reports whether motion should be reduced from player or OS settings.
+ *
+ * @returns {boolean} True when motion should be reduced.
+ */
+function shouldReduceMotion() {
+  if (settings?.reducedMotion === "on") {
+    return true;
+  }
+  if (settings?.reducedMotion === "off") {
+    return false;
+  }
+  return Boolean(motionMediaQuery?.matches);
 }
 
 /**
@@ -572,11 +670,178 @@ function bootMenu() {
 function wireMainMenu() {
   mainMenu.querySelector('[data-m="start"]').addEventListener("click", () => startGame({ load: false }));
   mainMenu.querySelector('[data-m="continue"]').addEventListener("click", () => startGame({ load: true }));
+  mainMenu.querySelector('[data-m="extras"]').addEventListener("click", () => {
+    renderExtrasOverlay();
+    setOverlay("extras-overlay", true);
+  });
   mainMenu.querySelector('[data-m="prefs"]').addEventListener("click", () => {
     syncPreferenceControls();
     setOverlay("prefs-overlay", true);
   });
   mainMenu.querySelector('[data-m="about"]').addEventListener("click", () => setOverlay("about-overlay", true));
+}
+
+// ---------------------------------------------------------------------------
+// EXTRAS — cross-playthrough gallery and music room, driven by persistent
+// unlocks recorded by the runner whenever a CG/image shows or music plays.
+// ---------------------------------------------------------------------------
+
+let extrasMusicAudio = null;
+let extrasMusicId = null;
+
+/**
+ * Stops any extras music preview.
+ *
+ * @returns {void}
+ */
+function stopExtrasMusic() {
+  extrasMusicAudio?.pause();
+  extrasMusicAudio = null;
+  extrasMusicId = null;
+}
+
+/**
+ * Clears the extras image viewer so reopening Extras never starts in lightbox
+ * mode.
+ *
+ * @returns {void}
+ */
+function resetExtrasViewer() {
+  const viewer = appRoot.querySelector("[data-extras-viewer]");
+  if (!viewer) {
+    return;
+  }
+  viewer.hidden = true;
+  const image = viewer.querySelector("img");
+  if (image) {
+    image.removeAttribute("src");
+    image.alt = "";
+  }
+}
+
+/**
+ * Opens one unlocked extras gallery image in the title-screen lightbox.
+ *
+ * @param {{ id: string, title: string }} entry - Extras gallery entry.
+ * @returns {void}
+ */
+function openExtrasViewer(entry) {
+  const source = resolveImage(entry.id);
+  if (!source) {
+    return;
+  }
+  const viewer = appRoot.querySelector("[data-extras-viewer]");
+  const image = viewer?.querySelector("img");
+  if (!viewer || !image) {
+    return;
+  }
+  image.src = source;
+  image.alt = entry.title;
+  viewer.hidden = false;
+}
+
+/**
+ * Renders the extras overlay from config + persistent unlocks.
+ *
+ * @returns {void}
+ */
+function renderExtrasOverlay() {
+  resetExtrasViewer();
+  const persistent = loadPersistentState(GAME.storage.persistent);
+  const extras = GAME.extras;
+  appRoot.querySelector("#extras-title").textContent = extras.title;
+  appRoot.querySelector("[data-extras-gallery-title]").textContent = extras.galleryTitle;
+  appRoot.querySelector("[data-extras-music-title]").textContent = extras.musicTitle;
+
+  const galleryHost = appRoot.querySelector("[data-extras-gallery]");
+  galleryHost.innerHTML = "";
+  if (extras.gallery.length === 0) {
+    galleryHost.append(extrasEmptyNote());
+  }
+  for (const entry of extras.gallery) {
+    if (isExtraUnlocked(persistent, "gallery", entry.id)) {
+      const thumb = document.createElement("button");
+      thumb.type = "button";
+      thumb.className = "extras-thumb";
+      thumb.dataset.extrasImage = entry.id;
+      const img = document.createElement("img");
+      img.src = resolveImage(entry.id) ?? "";
+      img.alt = entry.title;
+      const caption = document.createElement("span");
+      caption.textContent = entry.title;
+      thumb.append(img, caption);
+      thumb.addEventListener("click", () => openExtrasViewer(entry));
+      galleryHost.append(thumb);
+    } else {
+      const locked = document.createElement("div");
+      locked.className = "extras-thumb is-locked";
+      const label = document.createElement("span");
+      label.textContent = extras.lockedLabel;
+      locked.append(label);
+      galleryHost.append(locked);
+    }
+  }
+
+  const musicHost = appRoot.querySelector("[data-extras-music]");
+  musicHost.innerHTML = "";
+  if (extras.music.length === 0) {
+    musicHost.append(extrasEmptyNote());
+  }
+  for (const entry of extras.music) {
+    const row = document.createElement("div");
+    row.className = "extras-track";
+    if (isExtraUnlocked(persistent, "music", entry.id)) {
+      const play = document.createElement("button");
+      play.type = "button";
+      play.className = "extras-play";
+      play.textContent = extrasMusicId === entry.id ? "■" : "▶";
+      play.addEventListener("click", () => {
+        if (extrasMusicId === entry.id) {
+          stopExtrasMusic();
+        } else {
+          stopExtrasMusic();
+          const src = resolveAudio?.(entry.id);
+          if (src) {
+            extrasMusicAudio = new Audio(src);
+            extrasMusicAudio.loop = true;
+            const effective = getEffectiveSettings();
+            extrasMusicAudio.volume = Math.min(1, Math.max(0, (effective.masterVolume ?? 1) * (effective.musicVolume ?? 1)));
+            extrasMusicAudio.play().catch(() => {});
+            extrasMusicId = entry.id;
+          }
+        }
+        renderExtrasOverlay();
+      });
+      const title = document.createElement("span");
+      title.textContent = entry.title;
+      row.append(play, title);
+    } else {
+      row.classList.add("is-locked");
+      const title = document.createElement("span");
+      title.textContent = extras.lockedLabel;
+      row.append(title);
+    }
+    musicHost.append(row);
+  }
+
+  const viewer = appRoot.querySelector("[data-extras-viewer]");
+  viewer.onclick = (event) => {
+    if (event.target === viewer || event.target.closest("[data-extras-viewer-close]")) {
+      resetExtrasViewer();
+    }
+  };
+}
+
+/**
+ * Returns a placeholder note for an empty extras section.
+ *
+ * @returns {HTMLElement} Note element.
+ */
+function extrasEmptyNote() {
+  const note = document.createElement("p");
+  note.className = "extras-empty";
+  note.textContent = "Nothing here yet.";
+  return note;
 }
 
 /**
@@ -690,7 +955,8 @@ function startGame({ load }) {
   const compositor = new LayerCompositor(stage, {
     getSettings: getEffectiveSettings,
     onLog: logMessage,
-    onAdvance: () => runner?.advance()
+    onAdvance: () => runner?.advance(),
+    resolveVideo: (id) => (typeof resolveVideo === "function" ? resolveVideo(id) : null)
   });
   compositor.registerBackground(stageBg);
   const audio = new BrowserAudioService({
@@ -717,6 +983,7 @@ function startGame({ load }) {
       save: SAVE_KEY,
       autosave: AUTOSAVE_KEY,
       slotPrefix: SLOT_PREFIX,
+      persistent: GAME.storage.persistent,
       legacySave: LEGACY_SAVE_KEY,
       legacyAutosave: LEGACY_AUTOSAVE_KEY,
       legacySlotPrefix: LEGACY_SLOT_PREFIX
@@ -895,6 +1162,13 @@ function scheduleAuto() {
   const delay = skipOn ? 150 : settings.autoDelay;
   autoTimer = window.setTimeout(() => {
     if ((autoOn || skipOn) && runner && !runner.isBlockingInput() && !hasOpenOverlay() && mainMenu.hidden) {
+      // Skip mode only fast-forwards through previously read text. The first
+      // unseen beat stops the skip so new content is never blasted past.
+      if (skipOn && !autoOn && settings.skipMode === "seen" && runner.isCurrentBeatSeen?.() === false) {
+        skipOn = false;
+        syncToggleButtons();
+        return;
+      }
       runner.advance();
     }
   }, delay);
@@ -1054,6 +1328,9 @@ function wireOverlays() {
 
   const speed = appRoot.querySelector("#pref-speed");
   const auto = appRoot.querySelector("#pref-auto");
+  const skipMode = appRoot.querySelector("#pref-skip-mode");
+  const fontScale = appRoot.querySelector("#pref-font-scale");
+  const motion = appRoot.querySelector("#pref-motion");
   const volumeControls = [
     ["masterVolume", appRoot.querySelector("#pref-master")],
     ["musicVolume", appRoot.querySelector("#pref-music")],
@@ -1072,6 +1349,23 @@ function wireOverlays() {
     syncPreferenceControls();
     saveSettings();
   });
+  skipMode.addEventListener("change", () => {
+    settings.skipMode = skipMode.value === "all" ? "all" : "seen";
+    syncPreferenceControls();
+    saveSettings();
+  });
+  fontScale.addEventListener("input", () => {
+    settings.fontScale = Number(fontScale.value);
+    syncPreferenceControls();
+    applyPresentationSettings();
+    saveSettings();
+  });
+  motion.addEventListener("change", () => {
+    settings.reducedMotion = ["system", "on", "off"].includes(motion.value) ? motion.value : "system";
+    syncPreferenceControls();
+    applyPresentationSettings();
+    saveSettings();
+  });
   for (const [key, input] of volumeControls) {
     input.addEventListener("input", () => {
       settings[key] = Number(input.value);
@@ -1083,6 +1377,7 @@ function wireOverlays() {
   appRoot.querySelector("[data-pref-defaults]").addEventListener("click", () => {
     Object.assign(settings, DEFAULT_SHELL_SETTINGS);
     syncPreferenceControls();
+    applyPresentationSettings();
     saveSettings();
     runner?.syncAudioState?.({ instant: true });
   });
@@ -1109,8 +1404,12 @@ function wireOverlays() {
 function syncPreferenceControls() {
   const speed = appRoot.querySelector("#pref-speed");
   const auto = appRoot.querySelector("#pref-auto");
+  const skipMode = appRoot.querySelector("#pref-skip-mode");
+  const fontScale = appRoot.querySelector("#pref-font-scale");
+  const motion = appRoot.querySelector("#pref-motion");
   const speedVal = appRoot.querySelector("[data-speed-val]");
   const autoVal = appRoot.querySelector("[data-auto-val]");
+  const fontScaleVal = appRoot.querySelector("[data-font-scale-val]");
   const volumeControls = [
     ["masterVolume", appRoot.querySelector("#pref-master"), appRoot.querySelector("[data-master-val]")],
     ["musicVolume", appRoot.querySelector("#pref-music"), appRoot.querySelector("[data-music-val]")],
@@ -1121,8 +1420,12 @@ function syncPreferenceControls() {
 
   speed.value = String(settings.textSpeed);
   auto.value = String(settings.autoDelay);
+  skipMode.value = settings.skipMode;
+  fontScale.value = String(settings.fontScale);
+  motion.value = settings.reducedMotion;
   speedVal.textContent = speedLabel(settings.textSpeed);
   autoVal.textContent = autoDelayLabel(settings.autoDelay);
+  fontScaleVal.textContent = `${Math.round((settings.fontScale ?? 1) * 100)}%`;
   for (const [key, input, valueLabel] of volumeControls) {
     input.value = String(settings[key]);
     valueLabel.textContent = volumeLabel(settings[key]);
@@ -1140,6 +1443,10 @@ function setOverlay(id, visible) {
   const overlay = appRoot.querySelector(`#${id}`);
   if (overlay) {
     overlay.hidden = !visible;
+  }
+  if (id === "extras-overlay" && !visible) {
+    stopExtrasMusic();
+    resetExtrasViewer();
   }
 }
 
@@ -1159,7 +1466,10 @@ function hasOpenOverlay() {
  */
 function closeTopOverlay() {
   const overlays = [...appRoot.querySelectorAll(".overlay:not([hidden])")];
-  overlays.at(-1)?.setAttribute("hidden", "");
+  const top = overlays.at(-1);
+  if (top) {
+    setOverlay(top.id, false);
+  }
 }
 
 /**
@@ -1169,7 +1479,7 @@ function closeTopOverlay() {
  */
 function closeAllOverlays() {
   for (const overlay of appRoot.querySelectorAll(".overlay:not([hidden])")) {
-    overlay.hidden = true;
+    setOverlay(overlay.id, false);
   }
 }
 
@@ -1217,7 +1527,7 @@ function renderHistory() {
 /**
  * Returns renderer-facing settings, overriding speed while skipping.
  *
- * @returns {{ textSpeed: number, masterVolume: number, musicVolume: number, ambienceVolume: number, soundVolume: number, voiceVolume: number }} Effective settings.
+ * @returns {{ textSpeed: number, skipMode: string, masterVolume: number, musicVolume: number, ambienceVolume: number, soundVolume: number, voiceVolume: number }} Effective settings.
  */
 function getEffectiveSettings() {
   return {
@@ -1229,7 +1539,7 @@ function getEffectiveSettings() {
 /**
  * Loads persisted settings or sensible defaults.
  *
- * @returns {{ textSpeed: number, autoDelay: number, masterVolume: number, musicVolume: number, ambienceVolume: number, soundVolume: number, voiceVolume: number }} Settings.
+ * @returns {{ textSpeed: number, autoDelay: number, skipMode: string, masterVolume: number, musicVolume: number, ambienceVolume: number, soundVolume: number, voiceVolume: number }} Settings.
  */
 function loadSettings() {
   return parseShellSettings(readFirstStorage([SETTINGS_KEY, LEGACY_SETTINGS_KEY]));

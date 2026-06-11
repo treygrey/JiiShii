@@ -10,7 +10,7 @@ const SURFACE_KINDS = new Set(["story", "app"]);
  *
  * @param {object} moduleDefinition - Surface module definition.
  * @param {string} moduleDefinition.id - Stable surface id used by stage/open.
- * @param {"story"|"app"} [moduleDefinition.kind] - Surface behavior category.
+ * @param {"story"|"app"} [moduleDefinition.kind] - Surface behavior category. Defaults to "app" when phoneApp is declared, otherwise "story".
  * @param {boolean} [moduleDefinition.baseline] - True for the baseline VN surface.
  * @param {object} moduleDefinition.renderer - Renderer contract declaration.
  * @param {string} [moduleDefinition.renderer.surface] - Renderer surface id.
@@ -52,21 +52,25 @@ export function defineSurfaceModule(moduleDefinition) {
     `Surface module "${id}": renderer.projections`
   );
 
-  const kind = normalizeSurfaceKind(id, moduleDefinition.kind);
+  const phoneApp = normalizePhoneAppMetadata(id, moduleDefinition.phoneApp);
+  const kind = normalizeSurfaceKind(id, moduleDefinition.kind, phoneApp);
+  const commands = normalizeSurfaceCommands(id, kind, moduleDefinition.commands ?? {});
+  const handlers = normalizeCommandHandlers(id, moduleDefinition.handlers ?? {});
+  validateSurfaceHandlerContracts(id, commands, handlers);
 
   return {
     id,
     kind,
     baseline: moduleDefinition.baseline === true,
-    phoneApp: normalizePhoneAppMetadata(id, moduleDefinition.phoneApp),
+    phoneApp,
     renderer: {
       surface: id,
       commands: rendererCommands,
       projections: rendererProjections
     },
-    commands: normalizeSurfaceCommands(id, kind, moduleDefinition.commands ?? {}),
+    commands,
     state: normalizeStateLifecycle(id, moduleDefinition.state),
-    handlers: normalizeCommandHandlers(id, moduleDefinition.handlers ?? {})
+    handlers
   };
 }
 
@@ -75,14 +79,33 @@ export function defineSurfaceModule(moduleDefinition) {
  *
  * @param {string} surfaceId - Surface id.
  * @param {unknown} value - Candidate kind.
+ * @param {object|null} phoneApp - Normalized phone app metadata.
  * @returns {"story"|"app"} Normalized surface kind.
  */
-function normalizeSurfaceKind(surfaceId, value) {
-  const kind = value ?? "story";
+function normalizeSurfaceKind(surfaceId, value, phoneApp) {
+  const kind = value ?? (phoneApp ? "app" : "story");
   if (!SURFACE_KINDS.has(kind)) {
     throw new Error(`Surface module "${surfaceId}": kind must be "story" or "app".`);
   }
   return kind;
+}
+
+/**
+ * Validates handler declarations against command metadata.
+ *
+ * @param {string} surfaceId - Owning surface id.
+ * @param {Record<string, object>} commands - Normalized command metadata.
+ * @param {Record<string, { run?: Function, instant?: Function }>} handlers - Normalized command handlers.
+ * @returns {void}
+ */
+function validateSurfaceHandlerContracts(surfaceId, commands, handlers) {
+  for (const [type, metadata] of Object.entries(commands)) {
+    if (metadata.kind === "render" && metadata.blocks === true && typeof handlers[type]?.instant !== "function") {
+      throw new Error(
+        `Surface module "${surfaceId}": blocking render command "${type}" must provide handler "${type}".instant for rollback replay.`
+      );
+    }
+  }
 }
 
 /**

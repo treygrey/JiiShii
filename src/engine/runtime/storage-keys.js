@@ -1,6 +1,7 @@
 const SAVE_KEY = "jiishii-save";
 const AUTOSAVE_KEY = "jiishii-autosave";
 const SLOT_PREFIX = "jiishii-save-slot-";
+const PERSISTENT_KEY = "jiishii-persistent";
 
 /**
  * Normalizes localStorage key settings for saves.
@@ -13,6 +14,7 @@ export function normalizeStorageKeys(storageKeys = {}) {
     save: storageKeys.save ?? SAVE_KEY,
     autosave: storageKeys.autosave ?? AUTOSAVE_KEY,
     slotPrefix: storageKeys.slotPrefix ?? SLOT_PREFIX,
+    persistent: storageKeys.persistent ?? PERSISTENT_KEY,
     legacySave: storageKeys.legacySave ?? null,
     legacyAutosave: storageKeys.legacyAutosave ?? null,
     legacySlotPrefix: storageKeys.legacySlotPrefix ?? null

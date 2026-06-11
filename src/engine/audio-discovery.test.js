@@ -4,7 +4,7 @@ import {
   audioIdsFromPath,
   buildAssetDiscovery,
   buildAssetRegistry
-} from "./asset-discovery.js";
+} from "./assets/asset-discovery.js";
 import {
   AUDIO_ASSETS,
   listAudioIds,

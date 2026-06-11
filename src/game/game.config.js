@@ -15,6 +15,10 @@ export const GAME_CONFIG = {
       ambience: null
     }
   },
+  display: {
+    aspectRatio: "16:9",
+    narrationMaxChars: 80
+  },
   shell: {
     saveTitle: "Save Game",
     loadTitle: "Load Game",
@@ -38,9 +42,18 @@ export const GAME_CONFIG = {
     autosave: "jiishii-starter-autosave",
     settings: "jiishii-starter-settings",
     slotPrefix: "jiishii-starter-save-slot-",
+    persistent: "jiishii-starter-persistent",
     legacySave: "jiishii-legacy-save",
     legacyAutosave: "jiishii-legacy-autosave",
     legacySettings: "jiishii-legacy-settings",
     legacySlotPrefix: "jiishii-legacy-save-"
+  },
+  extras: {
+    gallery: [
+      { id: "tour_gallery_wallpaper", title: "Skyline Wallpaper" },
+      { id: "tour_gallery_selfie", title: "Tour Selfie" },
+      { id: "tour_gallery_group", title: "Group Shot" }
+    ],
+    music: []
   }
 };

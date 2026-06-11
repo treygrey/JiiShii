@@ -371,3 +371,28 @@ export function choice(definition) {
 function normalizeOption(option) {
   return typeof option === "string" ? { text: option } : { ...option };
 }
+
+/**
+ * Plays a full-screen video cutscene and waits for it to finish.
+ * Works on any surface; the video layer is compositor-owned.
+ *
+ *   video("intro_cutscene")
+ *   video("ending_credits", { skippable: false, volume: 0.8 })
+ *
+ * @param {string} id - Discovered video asset id.
+ * @param {object} [options] - Playback options.
+ * @param {boolean} [options.skippable] - Click/tap skips the cutscene (default true).
+ * @param {number} [options.volume] - Playback volume 0..1 (default 1, scaled by master).
+ * @param {boolean} [options.loop] - Loop until skipped (default false; implies skippable).
+ * @returns {object} Video command.
+ */
+export function video(id, options = {}) {
+  const loop = options.loop === true;
+  return {
+    type: "video",
+    id,
+    skippable: loop ? true : options.skippable !== false,
+    volume: Number.isFinite(options.volume) ? Math.min(1, Math.max(0, options.volume)) : 1,
+    loop
+  };
+}

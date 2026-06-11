@@ -1,4 +1,4 @@
-import { cloneAudioState } from "../audio-state.js";
+import { cloneAudioState } from "../audio/audio-state.js";
 
 /**
  * Creates a plain-data view of the live runner state for debug tooling.
@@ -46,6 +46,7 @@ export function getDebugSnapshot(runner) {
     sprites,
     images,
     vars: { ...(runner.state.vars ?? {}) },
+    saveVars: { ...(runner.state.saveVars ?? {}) },
     rollback: {
       pos: runner.rollbackPos,
       size: runner.rollbackBuffer.length,

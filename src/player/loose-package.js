@@ -1,11 +1,11 @@
-import { buildSceneRegistry, buildSurfaceModuleDiscovery, resolveFirstSceneId } from "../engine/content-discovery.js";
-import { buildAssetDiscovery, imageIdsFromPath, audioIdsFromPath } from "../engine/asset-discovery.js";
+import { buildSceneRegistry, buildSurfaceModuleDiscovery, resolveFirstSceneId } from "../engine/content/content-discovery.js";
+import { buildAssetDiscovery, imageIdsFromPath, audioIdsFromPath } from "../engine/assets/asset-discovery.js";
 import {
   normalizeGameManifest,
   validateGameManifest
 } from "../engine/package-manifest.js";
-import { normalizeGameConfig } from "../engine/game-config.js";
-import { BUILTIN_SURFACE_MODULES } from "../engine/surface-modules.js";
+import { normalizeGameConfig } from "../engine/config/game-config.js";
+import { BUILTIN_SURFACE_MODULES } from "../engine/surfaces/index.js";
 import { installAuthorApiGlobal } from "./author-api.js";
 
 /**
@@ -215,6 +215,7 @@ async function loadLoosePackageFromManifest(manifest, packageWarnings = []) {
 
   const imageDiscovery = buildLooseAssetDiscovery(manifest, "image", imageIdsFromPath);
   const audioDiscovery = buildLooseAssetDiscovery(manifest, "audio", audioIdsFromPath);
+  const videoDiscovery = buildLooseAssetDiscovery(manifest, "video", imageIdsFromPath);
   const surfaceDiscovery = buildSurfaceModuleDiscovery(surfaceModules, {
     builtinSurfaceModules: BUILTIN_SURFACE_MODULES
   });
@@ -241,6 +242,8 @@ async function loadLoosePackageFromManifest(manifest, packageWarnings = []) {
     resolveAudio: (id) => audioDiscovery.assets[id] ?? null,
     resolveAudioAmbiguity: (id) => audioDiscovery.ambiguities[id] ?? null,
     listAudioIds: () => Object.keys(audioDiscovery.assets),
+    resolveVideo: (id) => videoDiscovery.assets[id] ?? null,
+    listVideoIds: () => Object.keys(videoDiscovery.assets),
     ...spriteApi,
     packageWarnings
   };

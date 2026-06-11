@@ -1,6 +1,20 @@
-import { applyVarMutations, rollInt } from "../state.js";
-import { setBackgroundState } from "../visual-state.js";
+import { applyVarMutations, rollInt } from "../state/index.js";
+import { setBackgroundState } from "../state/visual-state.js";
 import { buildHandlerContext } from "./handler-context.js";
+
+const ROLLBACK_BEAT_TYPES = new Set([
+  "narration",
+  "dialogue",
+  "say",
+  "textBlock",
+  "lineBlock",
+  "streamImage",
+  "streamChatBlock",
+  "streamNarration",
+  "input",
+  "video",
+  "pause"
+]);
 
 /**
  * Runs commands until the runner reaches a blocked/readable beat.
@@ -21,13 +35,25 @@ export function runUntilBlocked(runner) {
   }
 
   if (
-    runner.isWaitingForPlayer &&
-    !runner.blockingInput &&
-    !runner.isFinished &&
-    !runner.reconstructing
+    shouldCaptureBeatSnapshot(runner)
   ) {
     runner.captureBeatSnapshot();
   }
+}
+
+/**
+ * Reports whether the currently blocked command should enter rollback history.
+ *
+ * @param {object} runner - Scene runner instance.
+ * @returns {boolean} True when the current beat is rollbackable.
+ */
+export function shouldCaptureBeatSnapshot(runner) {
+  if (!runner.isWaitingForPlayer || runner.isFinished || runner.reconstructing) {
+    return false;
+  }
+  const commandIndex = runner.activeBeatCommandIndex ?? runner.state.currentCommandIndex;
+  const command = runner.scene.script[commandIndex];
+  return ROLLBACK_BEAT_TYPES.has(command?.type);
 }
 
 /**
@@ -197,6 +223,13 @@ export function executeCommand(runner, command) {
     return;
   }
 
+  if (command.type === "setSaveVar") {
+    runner.applySaveVarCommand(command);
+    runner.syncIrlSprites({ instant: runner.reconstructing });
+    runner.state.currentCommandIndex += 1;
+    return;
+  }
+
   if (command.type === "roll") {
     runner.state.vars[command.key] = rollInt(runner.state, command.min, command.max);
     runner.syncIrlSprites({ instant: runner.reconstructing });
@@ -204,8 +237,24 @@ export function executeCommand(runner, command) {
     return;
   }
 
+  if (command.type === "persistFlag") {
+    runner.setPersistentFlag(command.key, command.value);
+    runner.state.currentCommandIndex += 1;
+    return;
+  }
+
   if (command.type === "condition") {
     runner.resolveGoto(runner.evaluateCondition(command) ? command.then : command.else);
+    return;
+  }
+
+  if (command.type === "input") {
+    runner.showInput(command);
+    return;
+  }
+
+  if (command.type === "video") {
+    runner.showVideo(command);
     return;
   }
 

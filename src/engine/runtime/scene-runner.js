@@ -1,4 +1,4 @@
-import { applyVarMutations, createInitialState, migrateState, rollInt } from "../state.js";
+import { applyVarMutations, createInitialState, migrateState, rollInt } from "../state/index.js";
 import {
   applyAmbienceState,
   applyAudioSceneState,
@@ -6,29 +6,29 @@ import {
   clearAmbienceState,
   clearMusicState,
   cloneAudioState
-} from "../audio-state.js";
-import { authorCompare, isOn } from "../showif.js";
-import { validateRendererContracts } from "../renderer-contract.js";
+} from "../audio/audio-state.js";
+import { authorCompare, isOn } from "../state/showif.js";
+import { validateRendererContracts } from "../surfaces/renderer-contract.js";
 import {
   applyHideCharacter,
   applyShowCharacter,
   applySpriteExpression,
   setSpriteFocus
-} from "../sprite-state.js";
+} from "../state/sprite-state.js";
 import {
   appendTextMessages
-} from "../visual-state.js";
+} from "../state/visual-state.js";
 import {
   BUILTIN_SURFACE_MODULES,
   cloneSurfaceState,
   createSurfaceRegistry,
   createSurfaceState,
   normalizeSurfaceState
-} from "../surface-modules.js";
+} from "../surfaces/index.js";
 import {
   createPhoneState,
   normalizePhoneState
-} from "../phone-state.js";
+} from "../state/phone-state.js";
 import { normalizeStorageKeys } from "./storage-keys.js";
 import {
   getHistory,
@@ -91,13 +91,15 @@ import {
   finishScene,
   showChoice,
   showDialogue,
+  showInput as showInputPresenter,
   showLineBlock,
   showNarration,
   showStreamChatBlock,
   showStreamImage,
   showStreamNarration,
   showTextBlock,
-  showTransition
+  showTransition,
+  showVideo as showVideoPresenter
 } from "./beat-presenter.js";
 import {
   advanceCommand as advanceCommandController,
@@ -111,6 +113,16 @@ import {
   setSurface,
   teardownMountedSurfaces
 } from "./surface-stack.js";
+import {
+  annotateSeenChoiceOptions,
+  conditionVars,
+  isCurrentBeatSeen,
+  loadPersistentState,
+  markActiveBeatSeen,
+  recordChoiceSeen,
+  setRunnerPersistentFlag,
+  unlockPersistentExtra
+} from "./persistent-controller.js";
 import {
   ensureTextingThreadForSpeaker as ensureTextingThreadForSpeakerController,
   getTextingTransitionNotificationContact as getTextingTransitionNotificationContactController,
@@ -320,6 +332,11 @@ export class SceneRunner {
     this.activeBeatCommandIndex = null;
     this.pauseTimer = null;
     this.pauseReady = false;
+
+    // Cross-playthrough progress: seen text, seen choices, extras unlocks,
+    // and route flags. Never rolled back, never inside save envelopes.
+    this.persistent = loadPersistentState(this.storageKeys.persistent);
+    this.activeBeatWasSeen = false;
   }
 
   /**
@@ -349,6 +366,68 @@ export class SceneRunner {
    */
   beginReadableBeat() {
     this.activeBeatCommandIndex = this.state.currentCommandIndex;
+    markActiveBeatSeen(this);
+  }
+
+  /**
+   * Returns whether the beat on screen was read on a previous visit.
+   * Skip mode uses this to stop fast-forwarding at unread text.
+   *
+   * @returns {boolean} True when the active beat was seen before.
+   */
+  isCurrentBeatSeen() {
+    return isCurrentBeatSeen(this);
+  }
+
+  /**
+   * Builds the variable view for showIf/condition evaluation: story vars
+   * plus `persistent:`-prefixed cross-playthrough flags.
+   *
+   * @returns {object} Merged condition variable view.
+   */
+  conditionVars() {
+    return conditionVars(this);
+  }
+
+  /**
+   * Unlocks one extras entry (gallery image or music track).
+   *
+   * @param {"gallery"|"music"} category - Extras category.
+   * @param {string} id - Asset or track id.
+   * @returns {void}
+   */
+  unlockExtra(category, id) {
+    unlockPersistentExtra(this, category, id);
+  }
+
+  /**
+   * Sets a cross-playthrough flag (route completion, endings, NG+).
+   *
+   * @param {string} key - Flag name without the `persistent:` prefix.
+   * @param {*} value - Flag value.
+   * @returns {void}
+   */
+  setPersistentFlag(key, value) {
+    setRunnerPersistentFlag(this, key, value);
+  }
+
+  /**
+   * Applies one save-persistent variable command at most once per save file.
+   *
+   * @param {object} command - setSaveVar command.
+   * @param {number} [commandIndex] - Script command index, defaults to current pointer.
+   * @returns {boolean} True when the command changed saveVars.
+   */
+  applySaveVarCommand(command, commandIndex = this.state.currentCommandIndex) {
+    this.state.saveVarEvents ??= {};
+    this.state.saveVars ??= {};
+    const eventKey = `${this.state.currentSceneId ?? this.scene?.id}:${commandIndex}`;
+    if (this.state.saveVarEvents?.[eventKey]) {
+      return false;
+    }
+    applyVarMutations(this.state.saveVars, { [command.key]: command.value });
+    this.state.saveVarEvents[eventKey] = 1;
+    return true;
   }
 
   /**
@@ -514,6 +593,7 @@ export class SceneRunner {
    */
   playMusic(command) {
     applyMusicState(this.state.audio, command);
+    this.unlockExtra("music", command.id);
     this.audio.playMusic?.(this.state.audio.music, {
       instant: this.reconstructing,
       fadeIn: command.fadeIn
@@ -901,10 +981,13 @@ export class SceneRunner {
    * (instant, side-effect-free), then renders the beat itself.
    *
    * @param {object} snap - A rollback snapshot.
+   * @param {object} [options] - Reconstruction options.
+   * @param {boolean} [options.preservePersistentPhoneState] - Preserve durable phone UI state.
+   * @param {boolean} [options.preserveSaveVars] - Preserve save-persistent vars across rollback.
    * @returns {void}
    */
-  reconstructTo(snap, { preservePersistentPhoneState = true } = {}) {
-    reconstructTo(this, snap, { preservePersistentPhoneState });
+  reconstructTo(snap, { preservePersistentPhoneState = true, preserveSaveVars = true } = {}) {
+    reconstructTo(this, snap, { preservePersistentPhoneState, preserveSaveVars });
   }
 
   /**
@@ -969,6 +1052,7 @@ export class SceneRunner {
    */
   selectChoice(choiceCommand, option) {
     this.blockingInput = false;
+    recordChoiceSeen(this, choiceCommand, option);
     this.state.choicesMade.push({
       choiceId: choiceCommand.id,
       selectedOptionId: option.id ?? option.goto ?? option.jump ?? option.text,
@@ -1470,6 +1554,7 @@ export class SceneRunner {
         command.type === "label" ||
         command.type === "setFlag" ||
         command.type === "setVar" ||
+        command.type === "setSaveVar" ||
         command.type === "roll"
       ) {
         index += 1;
@@ -1492,6 +1577,8 @@ export class SceneRunner {
       } else if (command.type === "setVar") {
         applyVarMutations(this.state.vars, { [command.key]: command.value });
         changedVars = true;
+      } else if (command.type === "setSaveVar") {
+        changedVars = this.applySaveVarCommand(command, cursor) || changedVars;
       } else if (command.type === "roll") {
         this.state.vars[command.key] = rollInt(this.state, command.min, command.max);
         changedVars = true;
@@ -1516,7 +1603,7 @@ export class SceneRunner {
    * @returns {boolean} Branch result.
    */
   evaluateCondition(command) {
-    return evaluatePredicate(conditionPredicate(command), this.state.vars, this.state);
+    return evaluatePredicate(conditionPredicate(command), this.conditionVars(), this.state);
   }
 
   /**
@@ -1527,6 +1614,26 @@ export class SceneRunner {
    */
   showTransition(command) {
     showTransition(this, command);
+  }
+
+  /**
+   * Presents a blocking text-input beat.
+   *
+   * @param {object} command - Input command.
+   * @returns {void}
+   */
+  showInput(command) {
+    showInputPresenter(this, command);
+  }
+
+  /**
+   * Plays a blocking full-screen video cutscene beat.
+   *
+   * @param {object} command - Video command.
+   * @returns {void}
+   */
+  showVideo(command) {
+    showVideoPresenter(this, command);
   }
 
   /**

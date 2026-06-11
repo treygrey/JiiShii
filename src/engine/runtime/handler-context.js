@@ -1,5 +1,5 @@
-import { addPhoneNotification, clearPhoneNotification } from "../phone-state.js";
-import { readSurfaceStateSlice } from "../surface-modules.js";
+import { addPhoneNotification, clearPhoneNotification } from "../state/phone-state.js";
+import { readSurfaceStateSlice } from "../surfaces/index.js";
 
 /**
  * Builds the command handler context passed to surface modules.

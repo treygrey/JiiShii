@@ -12,7 +12,7 @@ import {
   applySpriteExpression,
   applySpriteTransform,
   normalizeSpriteState
-} from "../../sprite-state.js";
+} from "../../state/sprite-state.js";
 import {
   appendStreamChat,
   appendTextMessages,
@@ -23,14 +23,14 @@ import {
   setStreamTitleState,
   setStreamWindowState,
   setTextingThread
-} from "../../visual-state.js";
+} from "../../state/visual-state.js";
 import {
   createGalleryState,
   createSocialState,
   normalizeGalleryState,
   normalizePhoneState,
   normalizeSocialState
-} from "../../phone-state.js";
+} from "../../state/phone-state.js";
 
 export const IRL_SURFACE = defineSurfaceModule({
   id: "irl",
@@ -163,11 +163,13 @@ export const IRL_SURFACE = defineSurfaceModule({
     showIrlImage: {
       run: ({ runner, command }) => {
         applyShowIrlImage(runner.state.sprites, command);
+        runner.unlockExtra?.("gallery", command.asset);
         runner.projectSurface("irl");
         runner.advanceCommand();
       },
       instant: ({ runner, command }) => {
         applyShowIrlImage(runner.state.sprites, command);
+        runner.unlockExtra?.("gallery", command.asset);
         runner.projectSurface("irl", { instant: true });
         runner.advanceCommand();
       }

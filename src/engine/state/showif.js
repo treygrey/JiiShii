@@ -127,7 +127,10 @@ export function authorCompare(left, op, right) {
  * @returns {{ name: string, neg: boolean, op: string|null, value: * }|null}
  */
 export function parseShowIf(expr) {
-  const match = String(expr).trim().match(/^(!?)\s*([A-Za-z_$][\w$]*)\s*(==|=|!=|>=|<=|>|<)?\s*(.*)$/);
+  // Names may carry a domain prefix:
+  // - save: reads save-persistent variables
+  // - persistent: reads cross-playthrough flags
+  const match = String(expr).trim().match(/^(!?)\s*((?:(?:save|persistent):)?[A-Za-z_$][\w$]*)\s*(==|=|!=|>=|<=|>|<)?\s*(.*)$/);
   if (!match) {
     return null;
   }

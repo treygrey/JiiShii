@@ -1,4 +1,4 @@
-import { appendHistoryEntry, cloneHistoryState } from "../history-state.js";
+import { appendHistoryEntry, cloneHistoryState } from "../state/history-state.js";
 
 /**
  * Records one reader-visible line in the runner-owned backlog.

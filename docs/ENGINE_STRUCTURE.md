@@ -5,8 +5,7 @@ package.
 
 ## Main Boundaries
 
-- `src/engine/` is engine code. Public compatibility entrypoints still live at
-  the top level, while implementation now lives in responsibility folders:
+- `src/engine/` is engine code. Implementation lives in responsibility folders:
   `assets/`, `audio/`, `commands/`, `config/`, `content/`, `dom/`, `runtime/`,
   `state/`, `surfaces/`, and `validation/`.
 - `src/renderers/` contains built-in surface renderers.
@@ -24,9 +23,8 @@ For the public-engine/private-game workflow, see
 
 ## Runtime Runner Split
 
-`src/engine/runner.js` is a compatibility entrypoint that re-exports
-`runtime/scene-runner.js`. The runner owns live state and dependencies, while
-the main behavior groups live in focused runtime modules:
+`src/engine/runtime/scene-runner.js` owns live state and dependencies, while the
+main behavior groups live in focused runtime modules:
 
 - `command-executor.js`: command loop and command dispatch
 - `save-controller.js`: save envelopes and load behavior
@@ -42,9 +40,9 @@ the main behavior groups live in focused runtime modules:
 
 ## Author Vocabulary
 
-Scenes should import from their package-local `vn.js`, not directly from
-`src/engine/commands.js`. `vn.js` is the stable author-facing surface in both
-bundled and loose package modes.
+Scenes should import from their package-local `vn.js`, not directly from engine
+internals. `vn.js` is the author-facing surface in both bundled and loose
+package modes.
 
 Internally, `stage("irl")`, `stage("texting")`, and `stage("streaming")`
 activate surfaces. "Stage" is script terminology. "Surface" is engine
@@ -135,7 +133,7 @@ A surface module declares:
 - command handlers
 - an optional renderer constructor export
 
-Use `defineSurfaceModule(...)` from `src/engine/surface-modules.js` or
+Use `defineSurfaceModule(...)` from `src/engine/surfaces/index.js` or
 `src/engine/surfaces/define-surface-module.js`. The registry validates module
 shape, renderer contracts, and command metadata.
 
@@ -187,8 +185,7 @@ Live play and rollback/load reconstruction must apply the same state mutation.
 
 ## Adding Sprite Transitions
 
-IRL sprite transitions use a small declarative registry. The compatibility
-entrypoint is `src/engine/irl-stage-direction.js`; implementation lives in
+IRL sprite transitions use a small declarative registry in
 `src/engine/dom/irl-stage-direction.js`. Game-specific names are registered from
 `src/game/sprite-animations.js` before scene validation. See
 `docs/SPRITE_COOKBOOK.md` for the author-facing defaults and extension recipe.
@@ -198,8 +195,8 @@ entrypoint is `src/engine/irl-stage-direction.js`; implementation lives in
 `src/engine/command-meta.js` combines base command metadata and surface module
 metadata. Validator, runner, and renderer contracts all read from the same
 semantic table. Author command helpers are split by family under
-`src/engine/commands/`, with `src/engine/commands.js` kept as the stable public
-barrel.
+`src/engine/commands/`, with `src/engine/commands/index.js` as the internal
+barrel imported by `src/game/vn.js` and loose package author APIs.
 
 When adding a command, make sure it is known to one of these:
 
@@ -208,8 +205,7 @@ When adding a command, make sure it is known to one of these:
 
 ## Validation
 
-The validator entrypoint is still `src/engine/validator.js`, with implementation
-under `src/engine/validation/`. It checks:
+Validation lives under `src/engine/validation/`. It checks:
 
 - render before any `stage()`
 - wrong-surface commands

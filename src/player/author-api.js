@@ -1,6 +1,6 @@
-import * as commands from "../engine/commands.js";
-import { registerMarkup } from "../engine/markup.js";
-import { registerIrlSpriteTransition } from "../engine/irl-stage-direction.js";
+import * as commands from "../engine/commands/index.js";
+import { registerMarkup } from "../engine/dom/markup.js";
+import { registerIrlSpriteTransition } from "../engine/dom/irl-stage-direction.js";
 
 export const AUTHOR_API = {
   ...commands,

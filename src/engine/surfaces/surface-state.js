@@ -1,5 +1,5 @@
-import { cloneSpriteState, createSpriteState, normalizeSpriteState } from "../sprite-state.js";
-import { cloneVisualState, createVisualState, normalizeVisualState } from "../visual-state.js";
+import { cloneSpriteState, createSpriteState, normalizeSpriteState } from "../state/sprite-state.js";
+import { cloneVisualState, createVisualState, normalizeVisualState } from "../state/visual-state.js";
 import { createSurfaceRegistry } from "./registry.js";
 
 /**

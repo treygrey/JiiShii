@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import * as commands from "../engine/commands.js";
+import * as commands from "../engine/commands/index.js";
 import { installAuthorApiGlobal } from "../player/author-api.js";
 
 describe("writer vocabulary exports", () => {

@@ -54,10 +54,10 @@ import {
   socialPost,
   condition,
   roll
-} from "./commands.js";
-import { createInitialState } from "./state.js";
-import { SceneRunner } from "./runner.js";
-import { BUILTIN_SURFACE_MODULES } from "./surface-modules.js";
+} from "./commands/index.js";
+import { createInitialState } from "./state/index.js";
+import { SceneRunner } from "./runtime/scene-runner.js";
+import { BUILTIN_SURFACE_MODULES } from "./surfaces/index.js";
 
 /**
  * Creates a renderer test double that satisfies the renderer contract and

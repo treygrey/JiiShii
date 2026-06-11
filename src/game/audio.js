@@ -3,7 +3,7 @@ import {
   buildAssetDiscovery,
   buildAssetRegistry,
   assetIdFromPathText
-} from "../engine/asset-discovery.js";
+} from "../engine/assets/asset-discovery.js";
 
 const AUDIO_MODULES = import.meta.glob(
   [

@@ -1,5 +1,5 @@
-import { renderMarkup } from "../../engine/markup.js";
-import { TEXTING_SURFACE } from "../../engine/surface-modules.js";
+import { renderMarkup } from "../../engine/dom/markup.js";
+import { TEXTING_SURFACE } from "../../engine/surfaces/index.js";
 
 const DEFAULT_TEXT_WAIT_TIME = 480;
 const PLAYER_REVEAL_DELAY = 140;
@@ -740,6 +740,9 @@ export class TextingRenderer {
     for (const option of choiceCommand.options) {
       const button = document.createElement("button");
       button.className = "choice-button";
+      if (option.seen) {
+        button.classList.add("is-seen");
+      }
       button.type = "button";
       button.textContent = option.text;
       button.addEventListener("click", (event) => {

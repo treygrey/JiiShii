@@ -4,7 +4,7 @@ import {
   normalizePhoneState,
   saveSocialPostState,
   normalizeSocialState
-} from "../../phone-state.js";
+} from "../../state/phone-state.js";
 
 export const SOCIAL_SURFACE = defineSurfaceModule({
   id: "social",

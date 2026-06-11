@@ -1,5 +1,5 @@
-import { resolveIrlPlacement, resolveIrlTransition } from "../../engine/irl-stage-direction.js";
-import { IRL_SURFACE } from "../../engine/surface-modules.js";
+import { resolveIrlPlacement, resolveIrlTransition } from "../../engine/dom/irl-stage-direction.js";
+import { IRL_SURFACE } from "../../engine/surfaces/index.js";
 import { createChoiceBand } from "../choice-band.js";
 
 const DEFAULT_OUTFIT = "hoodie";

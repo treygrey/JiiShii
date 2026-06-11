@@ -5,7 +5,7 @@
 // test/spec files, and files starting with _ are ignored.
 // =============================================================================
 
-import { buildSceneRegistry, resolveFirstSceneId } from "../../engine/content-discovery.js";
+import { buildSceneRegistry, resolveFirstSceneId } from "../../engine/content/content-discovery.js";
 import { GAME_CONFIG } from "../game.config.js";
 
 const SCENE_MODULES = import.meta.glob(

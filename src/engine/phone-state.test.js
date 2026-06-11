@@ -12,7 +12,7 @@ import {
   saveGalleryImageState,
   saveSocialPostState,
   setPhoneApps
-} from "./phone-state.js";
+} from "./state/phone-state.js";
 
 describe("phone state", () => {
   it("creates and normalizes shared phone state from config", () => {

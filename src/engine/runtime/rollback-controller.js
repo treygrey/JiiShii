@@ -100,14 +100,17 @@ export function captureBeatSnapshot(runner) {
  * @param {object} snap - Rollback snapshot.
  * @param {object} [options] - Reconstruction options.
  * @param {boolean} [options.preservePersistentPhoneState] - Preserve durable phone UI state.
+ * @param {boolean} [options.preserveSaveVars] - Preserve save-persistent vars across rollback.
  * @returns {void}
  */
-export function reconstructTo(runner, snap, { preservePersistentPhoneState = true } = {}) {
+export function reconstructTo(runner, snap, { preservePersistentPhoneState = true, preserveSaveVars = true } = {}) {
   runner.reconstructing = true;
   runner.activeBeatCommandIndex = null;
   runner.pauseReady = false;
   runner.clearPauseTimer();
   const preservedPhoneState = cloneSurfaceState(runner.state, runner.surfaceRegistry);
+  const preservedSaveVars = structuredClone(runner.state.saveVars ?? {});
+  const preservedSaveVarEvents = structuredClone(runner.state.saveVarEvents ?? {});
 
   runner.teardownMountedSurfaces();
   runner.audio.stopTransient?.();
@@ -123,6 +126,12 @@ export function reconstructTo(runner, snap, { preservePersistentPhoneState = tru
   runner.state.currentSceneId = snap.sceneId;
   runner.state.surfaceStack = [];
   runner.state.vars = structuredClone(snap.vars);
+  runner.state.saveVars = preserveSaveVars
+    ? preservedSaveVars
+    : structuredClone(snap.saveVars ?? {});
+  runner.state.saveVarEvents = preserveSaveVars
+    ? preservedSaveVarEvents
+    : structuredClone(snap.saveVarEvents ?? {});
   runner.state.rng = snap.rng;
   runner.state.choicesMade = structuredClone(snap.choicesMade ?? []);
   runner.state.audio = cloneAudioState(snap.audio);
@@ -141,6 +150,12 @@ export function reconstructTo(runner, snap, { preservePersistentPhoneState = tru
 
   runner.replaySceneContextToCurrentCommand();
   runner.runUntilBlocked();
+  runner.state.saveVars = preserveSaveVars
+    ? preservedSaveVars
+    : structuredClone(snap.saveVars ?? {});
+  runner.state.saveVarEvents = preserveSaveVars
+    ? preservedSaveVarEvents
+    : structuredClone(snap.saveVarEvents ?? {});
   runner.state.sprites = finalSurfaceState.sprites;
   runner.state.visuals = finalSurfaceState.visuals;
   if (preservePersistentPhoneState) {
@@ -223,6 +238,14 @@ export function replaySceneContextToCurrentCommand(runner) {
       case "setFlag":
       case "setVar":
       case "roll":
+      case "setSaveVar":
+        runner.state.currentCommandIndex += 1;
+        break;
+      case "persistFlag":
+        // Persistent flags live outside snapshots, so replay re-applies them
+        // (idempotent) — a save loaded on a fresh browser still records the
+        // flags its story already passed.
+        runner.setPersistentFlag(command.key, command.value);
         runner.state.currentCommandIndex += 1;
         break;
       case "narration":
@@ -250,6 +273,7 @@ export function replaySceneContextToCurrentCommand(runner) {
         break;
       case "music":
         applyMusicState(runner.state.audio, command);
+        runner.unlockExtra("music", command.id);
         runner.state.currentCommandIndex += 1;
         break;
       case "stopMusic":
@@ -399,10 +423,10 @@ import {
   clearAmbienceState,
   clearMusicState,
   cloneAudioState
-} from "../audio-state.js";
-import { cloneHistoryState } from "../history-state.js";
-import { setSpriteFocus } from "../sprite-state.js";
-import { cloneSurfaceState, createSurfaceState } from "../surface-modules.js";
+} from "../audio/audio-state.js";
+import { cloneHistoryState } from "../state/history-state.js";
+import { setSpriteFocus } from "../state/sprite-state.js";
+import { cloneSurfaceState, createSurfaceState } from "../surfaces/index.js";
 import {
   appendStreamChat,
   appendTextMessages,
@@ -411,5 +435,5 @@ import {
   setStreamTitleState,
   setStreamWindowState,
   setTextingThread
-} from "../visual-state.js";
-import { mergePersistentPhoneState } from "../phone-state.js";
+} from "../state/visual-state.js";
+import { mergePersistentPhoneState } from "../state/phone-state.js";
