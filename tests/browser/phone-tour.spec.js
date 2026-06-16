@@ -50,6 +50,17 @@ async function chooseCheckpoint(page, prompt, option) {
 }
 
 /**
+ * Clears the modal phone call and Calls app checkpoints added before streaming.
+ *
+ * @param {import('@playwright/test').Page} page - Playwright page.
+ * @returns {Promise<void>}
+ */
+async function completeCallTour(page) {
+  await chooseCheckpoint(page, "Call checkpoint", "Stay on the call.");
+  await chooseCheckpoint(page, "Calls app checkpoint", "Calls and voicemail worked.");
+}
+
+/**
  * Opens the floating phone and chooses an app from Home.
  *
  * @param {import('@playwright/test').Page} page - Playwright page.
@@ -151,6 +162,7 @@ test("texting choices survive visiting Home and returning to the active story th
   await chooseCheckpoint(page, "Gallery checkpoint", "I checked the gallery and wallpaper.");
   await chooseCheckpoint(page, "Social checkpoint", "I followed Alex and opened the post.");
   await chooseCheckpoint(page, "Post image checkpoint", "The post image opened full-size.");
+  await completeCallTour(page);
   await chooseCheckpoint(page, "Stream checkpoint", "Phone returns to the current surface.");
   await advanceUntilVisible(page, "The active thread kept its choice.");
 
@@ -276,11 +288,43 @@ test("skip all keeps advancing through streaming readable beats", async ({ page 
   await chooseCheckpoint(page, "Gallery checkpoint", "I checked the gallery and wallpaper.");
   await chooseCheckpoint(page, "Social checkpoint", "I followed Alex and opened the post.");
   await chooseCheckpoint(page, "Post image checkpoint", "The post image opened full-size.");
+  await completeCallTour(page);
 
   await page.locator('[data-q="skip"]').click();
   await expect(page.getByRole("option", { name: "Phone returns to the current surface." }))
     .toBeVisible();
   await expect(page.locator('[data-q="skip"]')).toHaveClass(/is-active/);
+});
+
+test("rollback to streaming chat does not duplicate already projected rows", async ({ page }) => {
+  await startTour(page);
+  await chooseCheckpoint(page, "Gallery checkpoint", "I checked the gallery and wallpaper.");
+  await chooseCheckpoint(page, "Social checkpoint", "I followed Alex and opened the post.");
+  await chooseCheckpoint(page, "Post image checkpoint", "The post image opened full-size.");
+  await completeCallTour(page);
+  await advanceUntilVisible(page, "Stream checkpoint");
+
+  const chatBlockIndex = await page.evaluate(() => {
+    const runner = window.__JIISHII_TEST__?.runner;
+    return runner?.scene?.script?.findIndex((command) => command.type === "streamChatBlock");
+  });
+  expect(chatBlockIndex).toBeGreaterThan(0);
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const state = await readRuntime(page);
+    if (state.currentCommandIndex <= chatBlockIndex) {
+      break;
+    }
+    await page.keyboard.press("PageUp");
+    await page.waitForTimeout(120);
+  }
+
+  await expect.poll(() => readRuntime(page).then((state) => state.currentCommandIndex)).toBe(chatBlockIndex);
+  await expect(page.locator(".stream-site")).toBeVisible();
+  await expect(page.locator(".stream-chat-log .chat-row")).toHaveCount(4);
+
+  await page.waitForTimeout(1400);
+  await expect(page.locator(".stream-chat-log .chat-row")).toHaveCount(4);
 });
 
 test("seen choice options are marked on later playthroughs", async ({ page }) => {
@@ -371,6 +415,57 @@ test("display settings lock the authored frame and apply accessibility preferenc
   expect(display.reducedMotion).toBe(true);
 });
 
+test("main menu stays inside the authored frame with no document margin leak", async ({ page }) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto("/");
+
+  const layout = await page.locator(".vn-root").evaluate((root) => {
+    const app = document.querySelector("#app");
+    const menu = document.querySelector("#main-menu");
+    const menuBackground = document.querySelector(".menu-bg");
+    if (!app || !menu || !menuBackground) {
+      throw new Error("Missing shell elements");
+    }
+    const readRect = (element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        top: rect.top,
+        right: rect.right,
+        bottom: rect.bottom,
+        left: rect.left,
+        width: rect.width,
+        height: rect.height
+      };
+    };
+    return {
+      app: readRect(app),
+      root: readRect(root),
+      menu: readRect(menu),
+      menuBackground: readRect(menuBackground),
+      viewport: {
+        width: window.innerWidth,
+        height: window.innerHeight
+      },
+      backgrounds: {
+        html: getComputedStyle(document.documentElement).backgroundColor,
+        body: getComputedStyle(document.body).backgroundColor,
+        app: getComputedStyle(app).backgroundColor
+      }
+    };
+  });
+
+  expect(layout.app.top).toBeCloseTo(0, 0);
+  expect(layout.app.left).toBeCloseTo(0, 0);
+  expect(layout.app.width).toBeCloseTo(layout.viewport.width, 0);
+  expect(layout.app.height).toBeCloseTo(layout.viewport.height, 0);
+  expect(layout.root.width / layout.root.height).toBeCloseTo(16 / 9, 2);
+  expect(layout.menu).toEqual(layout.root);
+  expect(layout.menuBackground).toEqual(layout.root);
+  expect(layout.backgrounds.html).toBe("rgb(8, 8, 12)");
+  expect(layout.backgrounds.body).toBe("rgb(8, 8, 12)");
+  expect(layout.backgrounds.app).toBe("rgb(8, 8, 12)");
+});
+
 test("phone home fits inside the authored frame at 16:9", async ({ page }) => {
   await page.setViewportSize({ width: 1365, height: 768 });
   await startTour(page);
@@ -427,6 +522,7 @@ test("stream surface fits inside the authored frame at 16:9", async ({ page }) =
   await chooseCheckpoint(page, "Gallery checkpoint", "I checked the gallery and wallpaper.");
   await chooseCheckpoint(page, "Social checkpoint", "I followed Alex and opened the post.");
   await chooseCheckpoint(page, "Post image checkpoint", "The post image opened full-size.");
+  await completeCallTour(page);
   await expect(page.locator(".stream-site")).toBeVisible();
 
   const layout = await page.locator(".stream-site").evaluate((stream) => {

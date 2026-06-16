@@ -269,6 +269,52 @@ music("music/main-theme")
 sound("sfx/door-slam")
 ```
 
+## Images And Video Displayables
+
+Use the simple wrappers first:
+
+```js
+background("backgrounds/demo-room-day", {
+  fit: "cover",
+  position: "center",
+  transition: "dissolve",
+  duration: 520
+})
+
+image("note", "props/demo-note", {
+  layer: "front",
+  fit: "contain",
+  x: 50,
+  y: 48,
+  width: 38
+})
+
+cg("cg/demo-cg", { fit: "cover" })
+video("intro_cutscene", { startAt: 0, endAt: 9000, volume: 0.9 })
+```
+
+For advanced placement, `media()` can show an image or video on the IRL stage:
+
+```js
+media("rain_overlay", {
+  kind: "video",
+  asset: "effects/rain-loop",
+  layer: "front",
+  fit: "cover",
+  alpha: 0.45,
+  loop: true,
+  muted: true
+})
+
+moveMedia("rain_overlay", { alpha: 0, duration: 600 })
+clearMedia("rain_overlay")
+```
+
+Layer names are semantic: `behind` renders behind character sprites, `front`
+renders over sprites, `cg` fills the authored frame, and `overlay` sits above CG
+but below engine UI. `background()` uses the same media pipeline internally, but
+only exposes conservative background options in v1.
+
 ## Sprites
 
 Sprites live under `src/game/assets/sprites/<character-id>/`.
@@ -348,7 +394,7 @@ Keyboard defaults:
 
 ## Mental Model
 
-Authors write `stage("irl")`, `stage("texting")`, and `stage("streaming")`
+Authors write `stage("irl")`, `stage("texting")`, `stage("streaming")`, and `stage("phone_call")`
 because that reads naturally in scripts. Internally, these are **surfaces**:
 presentation modules with renderer capabilities, state, commands, validator
 rules, save/load behavior, and rollback projection.
@@ -606,6 +652,8 @@ rollback rules, see `docs/AUDIO_COOKBOOK.md`.
 `video()` plays a full-screen cutscene from discovered `.webm`, `.mp4`, `.m4v`,
 or `.ogv` files under `assets/`. It is a rollbackable beat: rolling back can
 land on it again, and replay/load reconstruction skips past it deterministically.
+Use `startAt` and `endAt` for millisecond crop points. `fit` and `position`
+control how the clip fills the authored frame.
 
 `pause()` is a skippable timed beat. A click advances past it. `flash()` and
 `shake()` are transient compositor effects; pair them with `sound()` and
@@ -639,12 +687,43 @@ say("The phone goes dark.")
 
 Texting scrollback is runner-owned so rollback can reconstruct the phone state.
 
+## Phone Call Surface
+
+```js
+stage("phone_call")
+call("alex", { title: "Connected" })
+say("alex", "Are you alone?")
+say("me", "Yeah.")
+endCall()
+```
+
+Phone calls are story surfaces, not phone apps. They look like the Android-style
+phone, but active calls are modal: the floating phone button and in-phone
+navigation do not open Home or other apps until `endCall()` runs.
+
+Use ordinary `say()`, `narrate()`, `choice()`, `voice()`, and `sound()` inside a
+call. The active surface renders those beats as call transcript/caption text.
+
+Calls auto-record to the Calls app by default. Add `{ log: false }` to
+`call(...)` when the call should not appear in Recents.
+
+Voicemail is a Calls app entry:
+
+```js
+voicemail("alex_vm_01", "alex", {
+  text: "Call me back.",
+  audio: "alex_voicemail_01",
+  notify: true
+})
+```
+
 ## Streaming Surface
 
 ```js
 stage("streaming")
 streamLayout({ streamerName: "Alex", title: "First stream", viewers: 42 })
 streamWindow("live", "demo_camera")
+streamVideo("demo_clip", { mode: "replace", image: "demo_camera" })
 streamChatBlock([
   streamChat("viewer1", "first"),
   streamChat("viewer2", "hello")
@@ -656,6 +735,16 @@ streamTitle("The room settles.")
 
 Streaming chrome, chat, title, image, and window state are runner-owned and
 rollback-safe.
+
+`streamVideo()` plays inside the stream window. `mode: "replace"` swaps to the
+provided still image when playback ends, `mode: "hold"` leaves the final frame
+visible, and `mode: "loop"` keeps looping until another stream media command
+replaces it. Stream videos default to muted playback so browser autoplay rules
+do not stall the story.
+
+Stream videos advance immediately by default, so chat and narration can arrive
+while the clip is playing. Use `wait: true` only when the script should pause
+until the stream video finishes.
 
 ## Choices And Flow
 

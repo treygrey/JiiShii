@@ -5,6 +5,7 @@ const APP_LABELS = {
   texting: "Messages",
   gallery: "Gallery",
   social: "Social",
+  calls: "Calls",
   browser: "Browser"
 };
 
@@ -28,6 +29,11 @@ const APP_ICONS = {
       <path d="M8 18a6 6 0 0 1 10-10"></path>
       <path d="M12 16a2 2 0 1 0 4-4 2 2 0 0 0-4 4z"></path>
       <path d="M16 14h5"></path>
+    </svg>
+  `,
+  calls: `
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.3 1.8.6 2.6a2 2 0 0 1-.5 2.1L8 9.6a16 16 0 0 0 6.4 6.4l1.2-1.2a2 2 0 0 1 2.1-.5c.8.3 1.7.5 2.6.6a2 2 0 0 1 1.7 2z"></path>
     </svg>
   `,
   browser: `
@@ -78,7 +84,6 @@ export class PhoneHomeRenderer {
   mount() {
     this.shell.mount({ className: "phone-home-shell", title: "Phone", subtitle: "Home", showHeader: false });
     this.surface = this.shell.surface;
-    this.bindHomeChrome();
   }
 
   /**
@@ -96,26 +101,6 @@ export class PhoneHomeRenderer {
   showTransition() {}
   showChoice() {}
   showEnd() {}
-
-  /**
-   * Routes shared phone Home chrome through the renderer-owned runner handle.
-   *
-   * @returns {void}
-   */
-  bindHomeChrome() {
-    for (const button of this.surface?.querySelectorAll("[data-phone-nav='home']") ?? []) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (this.runner?.state?.visuals?.phone?.isButtonEnabled === false) {
-          return;
-        }
-        this.runner?.openPhoneApp?.("home");
-      });
-      button.addEventListener("pointerup", (event) => {
-        event.stopPropagation();
-      });
-    }
-  }
 
   /**
    * Shows a shared in-phone notification toast.

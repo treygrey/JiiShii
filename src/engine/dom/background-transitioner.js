@@ -25,8 +25,10 @@ import {
  * @param {string|null} url - Image url, or null to clear.
  * @returns {void}
  */
-function paint(frame, url) {
+function paint(frame, url, options = {}) {
   frame.style.backgroundImage = url ? `url("${url}")` : "";
+  frame.style.backgroundSize = options.fit ?? "cover";
+  frame.style.backgroundPosition = options.position ?? "center";
 }
 
 /**
@@ -65,8 +67,8 @@ function fade(frame, from, to, duration) {
  */
 export const BUILTIN_TRANSITIONS = {
   /** Instant swap — no animation. */
-  cut({ incoming, outgoing, url }) {
-    paint(incoming, url);
+  cut({ incoming, outgoing, url, fit, position }) {
+    paint(incoming, url, { fit, position });
     fade(incoming, 1, 1, 0);
     fade(outgoing, 0, 0, 0);
     return Promise.resolve();
@@ -77,8 +79,8 @@ export const BUILTIN_TRANSITIONS = {
    * stays fully opaque underneath until the new frame covers it, so there is
    * no brightness dip through black.
    */
-  async dissolve({ incoming, outgoing, url, duration }) {
-    paint(incoming, url);
+  async dissolve({ incoming, outgoing, url, duration, fit, position }) {
+    paint(incoming, url, { fit, position });
     incoming.style.zIndex = "2";
     outgoing.style.zIndex = "1";
     fade(incoming, 0, 0, 0); // ensure start state
@@ -91,12 +93,12 @@ export const BUILTIN_TRANSITIONS = {
    * image fades in. Good for time skips and hard scene breaks. Each half uses
    * roughly half the total duration.
    */
-  async fade_to_black({ incoming, outgoing, url, duration }) {
+  async fade_to_black({ incoming, outgoing, url, duration, fit, position }) {
     const half = Math.round(duration / 2);
     incoming.style.zIndex = "2";
     outgoing.style.zIndex = "1";
     await fade(outgoing, 1, 0, half);
-    paint(incoming, url);
+    paint(incoming, url, { fit, position });
     await fade(incoming, 0, 1, half);
   }
 };
@@ -142,10 +144,10 @@ export class BackgroundTransitioner {
    * Transitions the background to a new image.
    *
    * @param {string|null} id - Asset id (null clears to nothing).
-   * @param {object} [options] - { transition, duration }.
+   * @param {object} [options] - { transition, duration, fit, position }.
    * @returns {Promise<void>} Resolves when the transition completes.
    */
-  show(id, { transition, duration } = {}) {
+  show(id, { transition, duration, fit, position } = {}) {
     // Same image already showing — nothing to do.
     if (id === this.currentId) {
       return this.pending;
@@ -161,7 +163,7 @@ export class BackgroundTransitioner {
       const incoming = this.frames[1 - this.front];
       const outgoing = this.frames[this.front];
       return Promise.resolve(
-        fn({ incoming, outgoing, url, duration: dur, root: this.container })
+        fn({ incoming, outgoing, url, duration: dur, root: this.container, fit, position })
       ).then(() => {
         this.front = 1 - this.front;
       });

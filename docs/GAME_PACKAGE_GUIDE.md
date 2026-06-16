@@ -263,8 +263,8 @@ Phone defaults live in `game.config.js`:
 phone: {
   enabled: true,
   button: true,
-  apps: ["texting", "gallery", "social"],
-  homeAppOrder: ["texting", "gallery", "social"],
+  apps: ["texting", "calls", "gallery", "social"],
+  homeAppOrder: ["texting", "calls", "gallery", "social"],
   defaultWallpaper: null
 }
 ```
@@ -273,7 +273,7 @@ Scenes can still change phone availability mid-game:
 
 ```js
 phoneButton(true)
-phoneApps(["texting", "gallery"])
+phoneApps(["texting", "calls", "gallery"])
 openPhone("gallery")
 ```
 

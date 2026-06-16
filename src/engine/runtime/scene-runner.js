@@ -16,6 +16,7 @@ import {
   setSpriteFocus
 } from "../state/sprite-state.js";
 import {
+  appendPhoneCallTranscript,
   appendTextMessages
 } from "../state/visual-state.js";
 import {
@@ -1308,6 +1309,31 @@ export class SceneRunner {
    * @returns {void}
    */
   showNarration(command) {
+    if (this.state.currentSurface === "phone_call") {
+      this.beginReadableBeat();
+      this.lastSpeaker = null;
+      this.applySpriteFocus(null);
+      this.recordHistory({
+        kind: "narration",
+        message: command.message,
+        surface: "phone_call"
+      });
+      appendPhoneCallTranscript(this.state.visuals, {
+        kind: "narration",
+        message: command.message
+      });
+      this.isWaitingForPlayer = true;
+      this.compositor.showNarration(command, {
+        onComplete: () => {
+          this.state.currentCommandIndex += 1;
+          this.save();
+          if (!this.maybeAutoAdvanceToDecision()) {
+            this.onIdle();
+          }
+        }
+      });
+      return;
+    }
     showNarration(this, command);
   }
 
@@ -1335,6 +1361,36 @@ export class SceneRunner {
         waitTime: command.waitTime
       }));
       this.showTextBlock({ texts });
+      return;
+    }
+
+    if (this.state.currentSurface === "phone_call") {
+      const speaker = this.characters.get(speakerId) ?? { id: speakerId, name: speakerId };
+      this.beginReadableBeat();
+      this.isWaitingForPlayer = true;
+      this.recordHistory({
+        kind: "dialogue",
+        speaker: speakerId,
+        name: speaker.name ?? speakerId,
+        side: speaker.side ?? "left",
+        message: lines.join(" "),
+        surface: "phone_call"
+      });
+      appendPhoneCallTranscript(this.state.visuals, {
+        id: speakerId,
+        name: speaker.name ?? speakerId,
+        side: speaker.side ?? "left",
+        message: lines.join(" ")
+      });
+      this.compositor.showDialogue({ id: speakerId, message: lines.join(" ") }, speaker, {
+        onComplete: () => {
+          this.state.currentCommandIndex += 1;
+          this.save();
+          if (!this.maybeAutoAdvanceToDecision()) {
+            this.onIdle();
+          }
+        }
+      });
       return;
     }
 
@@ -1366,6 +1422,21 @@ export class SceneRunner {
       this.activeRenderer.renderTextBlockInstant({ texts: renderedTexts }, { characters: this.characters });
       return;
     }
+    if (this.state.currentSurface === "phone_call") {
+      const speaker = this.characters.get(speakerId) ?? { id: speakerId, name: speakerId };
+      appendPhoneCallTranscript(this.state.visuals, {
+        id: speakerId,
+        name: speaker.name ?? speakerId,
+        side: speaker.side ?? "left",
+        message: lines.join(" ")
+      });
+      this.activeRenderer.renderPhoneCallState?.(this.state.visuals.phoneCall, {
+        characters: this.characters,
+        phone: this.state.visuals.phone
+      });
+      this.compositor.renderDialogueInstant?.(lines.join(" "), speaker);
+      return;
+    }
     if (this.state.currentSurface === "irl") {
       if (command.expression) {
         applySpriteExpression(this.state.sprites, speakerId, command.expression);
@@ -1384,6 +1455,36 @@ export class SceneRunner {
    * @returns {void}
    */
   showDialogue(command) {
+    if (this.state.currentSurface === "phone_call") {
+      const speaker = this.characters.get(command.id) ?? { id: command.id, name: command.id };
+      this.beginReadableBeat();
+      this.isWaitingForPlayer = true;
+      this.lastSpeaker = command.id ?? null;
+      this.recordHistory({
+        kind: "dialogue",
+        speaker: command.id ?? null,
+        name: speaker.name ?? command.id ?? null,
+        side: speaker.side ?? "left",
+        message: command.message,
+        surface: "phone_call"
+      });
+      appendPhoneCallTranscript(this.state.visuals, {
+        id: command.id,
+        name: speaker.name ?? command.id,
+        side: speaker.side ?? "left",
+        message: command.message
+      });
+      this.compositor.showDialogue(command, speaker, {
+        onComplete: () => {
+          this.state.currentCommandIndex += 1;
+          this.save();
+          if (!this.maybeAutoAdvanceToDecision()) {
+            this.onIdle();
+          }
+        }
+      });
+      return;
+    }
     showDialogue(this, command);
   }
 

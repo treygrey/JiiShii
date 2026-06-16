@@ -28,9 +28,11 @@ import {
   listBackgroundTransitionPresets
 } from "../dom/background-transitions.js";
 import { didYouMean } from "./suggestions.js";
+import { MEDIA_FITS, MEDIA_LAYERS, VIDEO_MODES } from "../state/media-state.js";
 
 const PLAYER_ALIASES = new Set(["me", "you", "player"]);
-const IRL_IMAGE_FITS = new Set(["contain", "cover", "fill", "none", "scale-down"]);
+const IRL_IMAGE_FITS = new Set(MEDIA_FITS);
+const IRL_MEDIA_LAYERS = new Set(MEDIA_LAYERS.filter((layer) => layer !== "background" && layer !== "characters"));
 const NOOP_LIST = () => [];
 const NOOP_RESOLVE = () => null;
 
@@ -69,6 +71,9 @@ function collectSetVars(registry) {
       }
       if (command.type === "setSaveVar") {
         names.add(`save:${command.key}`);
+      }
+      if (command.type === "persistFlag") {
+        names.add(`persistent:${command.key}`);
       }
       if (command.type === "choice") {
         for (const option of command.options ?? []) {
@@ -314,9 +319,14 @@ function validateScene(scene, ctx) {
         break;
       case "showIrlImage":
         validateRequiredString(command.asset, `${where}: ${command.kind === "cg" ? "cg" : "image"}() needs an asset id.`, ctx);
-        validateImageAsset(ctx, where, command.kind === "cg" ? "cg" : "image", command.asset);
+        if (command.kind === "video") {
+          validateVideoAsset(ctx, where, "media", command.asset);
+        } else {
+          validateImageAsset(ctx, where, command.kind === "cg" ? "cg" : "image", command.asset);
+        }
         validateIrlDirectionOptions(command, where, ctx);
         validateIrlImageFit(command, where, ctx);
+        validateVideoOptions(command, where, ctx);
         break;
       case "moveIrlImage":
         validateRequiredString(command.id, `${where}: moveImage() needs an image displayable id.`, ctx);
@@ -342,6 +352,18 @@ function validateScene(scene, ctx) {
       case "streamImage":
         validateRequiredString(command.image, `${where}: streamImage() needs an image asset id.`, ctx);
         validateImageAsset(ctx, where, "streamImage", command.image);
+        validateIrlImageFit(command, where, ctx);
+        break;
+      case "streamVideo":
+        validateRequiredString(command.video, `${where}: streamVideo() needs a video asset id.`, ctx);
+        validateVideoAsset(ctx, where, "streamVideo", command.video);
+        validateStreamVideoMode(command, where, ctx);
+        validateIrlImageFit(command, where, ctx);
+        validateVideoOptions(command, where, ctx);
+        if (command.mode === "replace") {
+          validateRequiredString(command.image, `${where}: streamVideo({ mode: "replace" }) needs an image asset id.`, ctx);
+          validateImageAsset(ctx, where, "streamVideo replacement", command.image);
+        }
         break;
       case "streamWindow":
         if (command.state === "live") {
@@ -388,6 +410,7 @@ function validateScene(scene, ctx) {
         validateImageAsset(ctx, where, "background", command.id);
         validateBackgroundTransition(command, where, ctx);
         validateOptionalDuration(command.duration, `${where}: background() duration`, ctx);
+        validateIrlImageFit(command, where, ctx);
         break;
       case "music":
       case "ambience":
@@ -447,9 +470,9 @@ function validateScene(scene, ctx) {
         break;
       case "video":
         validateRequiredString(command.id, `${where}: video() needs a video asset id.`, ctx);
-        if (ctx.videoAssets && command.id && !ctx.videoAssets.has(command.id)) {
-          ctx.errors.push(`${where}: video("${command.id}") is not a discovered video asset.${didYouMean(command.id, [...ctx.videoAssets])}`);
-        }
+        validateVideoAsset(ctx, where, "video", command.id);
+        validateStreamVideoMode(command, where, ctx);
+        validateVideoOptions(command, where, ctx);
         break;
       case "phoneApps":
         if (!Array.isArray(command.apps)) {
@@ -509,6 +532,25 @@ function validateScene(scene, ctx) {
           ctx.warnings.push(`${where}: socialLike("${command.id}") does not match any socialPost() id.${didYouMean(command.id, [...ctx.authoredPhoneIds.socialPostIds])}`);
         }
         break;
+      case "call":
+        validateRequiredString(command.contact, `${where}: call() needs a contact id.`, ctx);
+        if (command.contact != null && !knownSpeakers.has(command.contact)) {
+          ctx.warnings.push(`${where}: call("${command.contact}") is not a known character.${didYouMean(command.contact, speakerList)}`);
+        }
+        break;
+      case "endCall":
+        break;
+      case "voicemail":
+        validateRequiredString(command.id, `${where}: voicemail() needs a voicemail id.`, ctx);
+        validateRequiredString(command.contact, `${where}: voicemail("${command.id ?? ""}") needs a contact id.`, ctx);
+        if (command.contact != null && !knownSpeakers.has(command.contact)) {
+          ctx.warnings.push(`${where}: voicemail("${command.id ?? ""}") contact "${command.contact}" is not a known character.${didYouMean(command.contact, speakerList)}`);
+        }
+        if (command.audio != null) {
+          validateRequiredString(command.audio, `${where}: voicemail("${command.id ?? ""}") audio must be an audio asset id.`, ctx);
+          validateAudioAsset(ctx, where, "voicemail", command.audio);
+        }
+        break;
       default:
         break;
     }
@@ -517,8 +559,9 @@ function validateScene(scene, ctx) {
   // A character shown but never given an outfit will render bodyless (the head
   // floats) once art exists, since there's no reliable default outfit.
   for (const id of shownChars) {
-    if (!outfittedChars.has(id) && hasArt(id)) {
-      ctx.warnings.push(`${where}: show("${id}") never sets an outfit, so it will render without a body. Add { outfit: "…" } on first show. Outfits: ${ctx.listOutfits(id).join(", ")}.`);
+    const availableOutfits = ctx.listOutfits(id);
+    if (!outfittedChars.has(id) && hasArt(id) && availableOutfits.length > 0) {
+      ctx.warnings.push(`${where}: show("${id}") never sets an outfit, so it will render without a body. Add { outfit: "…" } on first show. Outfits: ${availableOutfits.join(", ")}.`);
     }
   }
 }
@@ -752,10 +795,15 @@ function validateIrlDirectionOptions(command, where, ctx) {
   validateOptionalNumber(command.scale, `${where}: ${command.type}() scale`, ctx, { min: 0.01 });
   validateOptionalNumber(command.alpha, `${where}: ${command.type}() alpha`, ctx, { min: 0, max: 1 });
   validateOptionalNumber(command.z, `${where}: ${command.type}() z`, ctx);
+  validateOptionalCssPosition(command.width, `${where}: ${command.type}() width`, ctx);
+  validateOptionalCssPosition(command.height, `${where}: ${command.type}() height`, ctx);
   validateOptionalCssPosition(command.x, `${where}: ${command.type}() x`, ctx);
   validateOptionalCssPosition(command.y, `${where}: ${command.type}() y`, ctx);
   validateOptionalDuration(command.duration, `${where}: ${command.type}() duration`, ctx);
   validateOptionalCssEasing(command.easing, `${where}: ${command.type}() easing`, ctx);
+  if (command.layer != null && !IRL_MEDIA_LAYERS.has(command.layer)) {
+    ctx.errors.push(`${where}: ${command.type}() layer must be one of: ${[...IRL_MEDIA_LAYERS].join(", ")}.`);
+  }
 }
 
 /**
@@ -771,6 +819,38 @@ function validateIrlImageFit(command, where, ctx) {
     return;
   }
   ctx.errors.push(`${where}: ${command.kind === "cg" ? "cg" : "image"}() fit must be one of: ${[...IRL_IMAGE_FITS].join(", ")}.`);
+}
+
+/**
+ * Validates authored video mode values.
+ *
+ * @param {object} command - Video-bearing command.
+ * @param {string} where - Scene label.
+ * @param {object} ctx - Validation context.
+ * @returns {void}
+ */
+function validateStreamVideoMode(command, where, ctx) {
+  if (command.mode == null || VIDEO_MODES.includes(command.mode)) {
+    return;
+  }
+  ctx.errors.push(`${where}: ${command.type}() mode must be one of: ${VIDEO_MODES.join(", ")}.`);
+}
+
+/**
+ * Validates shared video timing and volume fields.
+ *
+ * @param {object} command - Video-bearing command.
+ * @param {string} where - Scene label.
+ * @param {object} ctx - Validation context.
+ * @returns {void}
+ */
+function validateVideoOptions(command, where, ctx) {
+  validateOptionalDuration(command.startAt, `${where}: ${command.type}() startAt`, ctx);
+  validateOptionalDuration(command.endAt, `${where}: ${command.type}() endAt`, ctx);
+  validateOptionalNumber(command.volume, `${where}: ${command.type}() volume`, ctx, { min: 0, max: 1 });
+  if (Number.isFinite(command.startAt) && Number.isFinite(command.endAt) && command.endAt <= command.startAt) {
+    ctx.errors.push(`${where}: ${command.type}() endAt must be greater than startAt.`);
+  }
 }
 
 /**
@@ -1030,6 +1110,21 @@ function validateImageAsset(ctx, where, label, id) {
       return;
     }
     ctx.warnings.push(`${where}: ${label}("${id}") has no art yet (placeholder will show).${didYouMean(id, ctx.listImageIds())}`);
+  }
+}
+
+/**
+ * Warns when an authored video id does not resolve to a registered asset.
+ *
+ * @param {object} ctx - Validation context.
+ * @param {string} where - Scene label.
+ * @param {string} label - Author-facing command/item label.
+ * @param {string|null} id - Video asset id.
+ * @returns {void}
+ */
+function validateVideoAsset(ctx, where, label, id) {
+  if (ctx.videoAssets && id && !ctx.videoAssets.has(id)) {
+    ctx.errors.push(`${where}: ${label}("${id}") is not a discovered video asset.${didYouMean(id, [...ctx.videoAssets])}`);
   }
 }
 

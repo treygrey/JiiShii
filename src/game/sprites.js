@@ -29,6 +29,10 @@ const EXPRESSION_ALIASES = {
   disgusted: ["grossed_out", "disdain"]
 };
 
+const FULL_BODY_SPRITE_RECIPE = [
+  { id: "expression", source: "emotions", key: "$expression", required: true }
+];
+
 /**
  * Keeps authored sprite layer ids exact while tolerating nullish recipe fields.
  *
@@ -66,7 +70,10 @@ function spriteUrl(modules, character, file, subdir = "") {
   }
   const folderPath = subdir ? `${character}/${subdir}/${file}` : `${character}/${file}`;
   const topLevelPath = `${character}/${file}`;
-  return modules[`./assets/sprites/${folderPath}`] ?? modules[`./assets/sprites/${topLevelPath}`] ?? null;
+  return modules[`./assets/sprites/${folderPath}`]
+    ?? modules[`./assets/sprites/${topLevelPath}`]
+    ?? modules[`./assets/sprites/${file}`]
+    ?? null;
 }
 
 /**
@@ -117,7 +124,11 @@ function substituteTokens(value, context) {
  * @param {Record<string, object>} recipes - Character recipe map.
  * @returns {Array<object>} Sprite recipe.
  */
-function recipeFor(character, recipes = SPRITE_RECIPES) {
+function recipeFor(character, recipes = SPRITE_RECIPES, spriteManifest = manifest) {
+  const entry = entryFor(character, spriteManifest);
+  if (entry?.recipe === "fullbody") {
+    return FULL_BODY_SPRITE_RECIPE;
+  }
   return recipes[`./assets/sprites/${character}/sprite.recipe.js`] ?? defaultSpriteRecipe;
 }
 
@@ -215,15 +226,15 @@ export function resolveSpriteLayers({
 
   const context = {
     character,
-    outfit: normalize(outfit),
-    expression: normalize(expression),
-    body: normalize(body),
+    outfit: exactId(outfit),
+    expression: exactId(expression),
+    body: exactId(body),
     vars
   };
   const layers = [];
   const missingRequired = [];
 
-  for (const descriptor of recipeFor(character, recipes)) {
+  for (const descriptor of recipeFor(character, recipes, spriteManifest)) {
     if (!descriptor || !shouldIncludeLayer(descriptor, context)) {
       continue;
     }
@@ -233,7 +244,7 @@ export function resolveSpriteLayers({
     const layer = {
       id: descriptor.id,
       source: descriptor.source,
-      key: normalize(key),
+      key: exactId(key),
       required: descriptor.required === true,
       url
     };

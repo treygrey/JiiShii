@@ -17,6 +17,7 @@ import {
   goto,
   hideAll,
   image,
+  media,
   clearImage,
   mark,
   music,
@@ -35,6 +36,7 @@ import {
   stopSound,
   shake,
   streamImage,
+  streamVideo,
   streamChat,
   streamChatBlock,
   streamTitle,
@@ -720,6 +722,23 @@ describe("validateScenes", () => {
     expectMessage(invalid.warnings, "never sets an outfit");
   });
 
+  it("does not demand outfits for expression-only full-body sprites", () => {
+    const result = validateScenes(registryOf(scene({
+      id: "valid_fullbody_sprite_scene",
+      cast: ["me", "alex"],
+      script: [
+        stage("irl"),
+        show("alex", { expression: "smile" })
+      ]
+    })), {
+      listOutfits: () => [],
+      listMissingRequiredSpriteLayers: () => []
+    });
+
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toEqual([]);
+  });
+
   it("warns when required sprite recipe layers are missing", () => {
     const result = validateScenes(registryOf(scene({
       id: "missing_required_sprite_layer_scene",
@@ -868,6 +887,30 @@ describe("validateScenes", () => {
     expectMessage(result.errors, "cg() fit must be one of:");
   });
 
+  it("reports invalid media layer and video timing values", () => {
+    const result = validateScenes(registryOf(scene({
+      id: "bad_media_scene",
+      cast: ["me"],
+      script: [
+        stage("irl"),
+        media("rain", {
+          kind: "video",
+          asset: "rain_loop",
+          layer: "characters",
+          startAt: 900,
+          endAt: 100,
+          volume: 2
+        })
+      ]
+    })), {
+      videoAssets: new Set(["rain_loop"])
+    });
+
+    expectMessage(result.errors, "showIrlImage() layer must be one of:");
+    expectMessage(result.errors, "showIrlImage() volume must be at most 1");
+    expectMessage(result.errors, "showIrlImage() endAt must be greater than startAt");
+  });
+
   it("checks IRL CG and image assets", () => {
     const valid = validateScenes(registryOf(scene({
       id: "valid_irl_image_scene",
@@ -941,6 +984,37 @@ describe("validateScenes", () => {
     expectMessage(invalid.warnings, 'textImage("missing_photo") has no art yet');
     expectMessage(invalid.warnings, 'streamImage("missing_stream_image") has no art yet');
     expectMessage(invalid.warnings, 'streamWindow("missing_stream_window") has no art yet');
+  });
+
+  it("validates stream video assets and replacement images", () => {
+    const valid = validateScenes(registryOf(scene({
+      id: "valid_stream_video_scene",
+      cast: ["me"],
+      script: [
+        stage("streaming"),
+        streamVideo("stream_clip", { mode: "replace", image: "portraits/demo_portrait" })
+      ]
+    })), {
+      videoAssets: new Set(["stream_clip"])
+    });
+
+    expect(valid.errors).toEqual([]);
+
+    const invalid = validateScenes(registryOf(scene({
+      id: "invalid_stream_video_scene",
+      cast: ["me"],
+      script: [
+        stage("streaming"),
+        streamVideo("missing_clip", { mode: "replace" }),
+        streamVideo("stream_clip", { mode: "weird" })
+      ]
+    })), {
+      videoAssets: new Set(["stream_clip"])
+    });
+
+    expectMessage(invalid.errors, 'streamVideo("missing_clip") is not a discovered video asset');
+    expectMessage(invalid.errors, 'streamVideo({ mode: "replace" }) needs an image asset id');
+    expectMessage(invalid.errors, "streamVideo() mode must be one of:");
   });
 
   it("warns when an image id is ambiguous", () => {

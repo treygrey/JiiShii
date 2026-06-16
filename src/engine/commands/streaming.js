@@ -27,6 +27,25 @@ export function streamImage(image, options = {}) {
 }
 
 /**
+ * Plays or loops a video inside the stream window.
+ *
+ * @param {string} video - Stream video asset id.
+ * @param {object} [options] - Stream video options.
+ * @returns {object} Stream video command.
+ */
+export function streamVideo(video, options = {}) {
+  const mode = options.mode ?? (options.loop ? "loop" : "hold");
+  return {
+    ...options,
+    type: "streamVideo",
+    video,
+    mode,
+    muted: options.muted !== false,
+    loop: mode === "loop" || options.loop === true
+  };
+}
+
+/**
  * Creates a block of streaming chat messages.
  *
  * Accepts either `streamChatBlock(messages, options)` for quick authoring or

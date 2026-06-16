@@ -1,37 +1,30 @@
 import { renderMarkup } from "../../engine/dom/markup.js";
 import { TEXTING_SURFACE } from "../../engine/surfaces/index.js";
+import {
+  PHONE_ADVANCE_DEAD_ZONE_EVENTS,
+  bindPhoneAdvanceDeadZones,
+  bindPhoneNavigation,
+  createPhoneFrame,
+  readableTextColor,
+  stopPhoneStoryAdvance
+} from "../phone/phone-frame.js";
 
 const DEFAULT_TEXT_WAIT_TIME = 480;
 const PLAYER_REVEAL_DELAY = 140;
-const PHONE_ADVANCE_DEAD_ZONE_EVENTS = ["click", "pointerdown", "pointerup"];
 const DEFAULT_PLAYER_BUBBLE_COLOR = "#4a90e2";
 const DEFAULT_NPC_BUBBLE_COLOR = "#d1d5db";
 const PLAYER_MESSAGE_IDS = new Set(["player", "me", "you"]);
 
 /**
- * Picks a legible text color (near-black or white) for a given bubble color
- * based on perceived luminance, so light identity colors stay readable.
+ * Extracts the clock text from a contact subtitle without depending on a
+ * specific separator glyph.
  *
- * @param {string} hex - Bubble background color, e.g. "#FB6F92".
- * @returns {string} "#16161a" for light backgrounds, "#ffffff" for dark.
+ * @param {string} subtitle - Contact subtitle.
+ * @returns {string} Phone status time.
  */
-function readableTextColor(hex) {
-  const value = hex.replace("#", "");
-  const r = parseInt(value.slice(0, 2), 16);
-  const g = parseInt(value.slice(2, 4), 16);
-  const b = parseInt(value.slice(4, 6), 16);
-  const luminance = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
-  return luminance > 0.6 ? "#16161a" : "#ffffff";
-}
-
-/**
- * Stops an event from bubbling into the stage-level story advance handler.
- *
- * @param {Event} event - Pointer or click event from phone chrome.
- * @returns {void}
- */
-function stopStoryAdvance(event) {
-  event.stopPropagation();
+function statusTimeFromSubtitle(subtitle) {
+  const value = String(subtitle ?? "").trim();
+  return value ? value.split(/\s+/).pop() : "14:30";
 }
 
 /**
@@ -108,53 +101,32 @@ export class TextingRenderer {
 
     this.surface = document.createElement("div");
     this.surface.className = "texting-shell";
-    this.surface.innerHTML = `
-      <section class="phone-frame" aria-label="Phone">
-        <div class="phone-notch" aria-hidden="true"></div>
-        <div class="status-bar">
-          <span class="status-time">${contact.subtitle ? contact.subtitle.split("·").pop().trim() : "14:30"}</span>
-          <span class="status-icons" aria-label="Phone status">
-            <span class="wifi-dot" aria-hidden="true"></span>
-            <span class="signal-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
-            <span class="battery-icon" aria-hidden="true"></span>
-          </span>
-        </div>
-        <section class="phone-screen">
-          <header class="phone-header">
-            <button class="icon-button thread-back-button" type="button" tabindex="-1" title="Back" aria-label="Back" hidden>
-              <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
-            </button>
-            <div class="header-id">
-              <div class="header-avatar" aria-hidden="true"${contact.color ? ` style="background:${contact.color};color:${readableTextColor(contact.color)}"` : ""}>${contact.avatar ?? contact.name?.slice(0, 1) ?? "?"}</div>
-              <h1>${contact.name ?? "Messages"}</h1>
-            </div>
-            <button class="icon-button thread-call-button" type="button" tabindex="-1" title="Call" aria-label="Call">
-              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 10l5-3v10l-5-3"></path><rect x="3" y="7" width="12" height="10" rx="2.5"></rect></svg>
-            </button>
-          </header>
-          <div class="phone-notification-host" aria-live="polite"></div>
-          <div class="message-list" aria-live="polite"></div>
-          <div class="typing-indicator message-row message-row--left" hidden>
-            <div class="message-bubble typing-bubble"><span></span><span></span><span></span></div>
+    this.surface.innerHTML = createPhoneFrame({
+      bodyHtml: `
+        <header class="phone-header">
+          <button class="icon-button thread-back-button" type="button" tabindex="-1" title="Back" aria-label="Back" hidden>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="15 18 9 12 15 6"></polyline></svg>
+          </button>
+          <div class="header-id">
+            <div class="header-avatar" aria-hidden="true"></div>
+            <h1></h1>
           </div>
-          <footer class="composer-area">
-            <div class="choice-tray" aria-label="Reply choices"></div>
-            <p class="save-status" aria-live="polite"></p>
-          </footer>
-        </section>
-        <nav class="phone-nav-bar" aria-label="Phone navigation">
-          <button class="phone-nav-button" type="button" aria-label="System back" data-phone-nav="back">
-            <span class="phone-nav-glyph" aria-hidden="true">‹</span>
+          <button class="icon-button thread-call-button" type="button" tabindex="-1" title="Call" aria-label="Call">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 10l5-3v10l-5-3"></path><rect x="3" y="7" width="12" height="10" rx="2.5"></rect></svg>
           </button>
-          <button class="phone-nav-button phone-home-button" type="button" aria-label="Home" data-phone-nav="home">
-            <span class="phone-home-pill" aria-hidden="true"></span>
-          </button>
-          <button class="phone-nav-button" type="button" aria-label="Settings">
-            <span class="phone-nav-glyph" aria-hidden="true">Settings</span>
-          </button>
-        </nav>
-      </section>
-    `;
+        </header>
+        <div class="phone-notification-host" aria-live="polite"></div>
+        <div class="message-list" aria-live="polite"></div>
+        <div class="typing-indicator message-row message-row--left" hidden>
+          <div class="message-bubble typing-bubble"><span></span><span></span><span></span></div>
+        </div>
+        <footer class="composer-area">
+          <div class="choice-tray" aria-label="Reply choices"></div>
+          <p class="save-status" aria-live="polite"></p>
+        </footer>
+      `,
+      statusTime: statusTimeFromSubtitle(contact.subtitle)
+    });
     this.appRoot.append(this.surface);
 
     this.phoneFrame = this.surface.querySelector(".phone-frame");
@@ -164,6 +136,7 @@ export class TextingRenderer {
     this.typingIndicator = this.surface.querySelector(".typing-indicator");
     this.notificationHost = this.surface.querySelector(".phone-notification-host");
     this.saveStatus = this.surface.querySelector(".save-status");
+    this.setThreadHeader(contact);
     this.surface.querySelector(".thread-back-button")?.addEventListener("click", (event) => {
       event.stopPropagation();
       this.selectedThreadId = null;
@@ -180,27 +153,11 @@ export class TextingRenderer {
    */
   bindDocumentNavigation() {
     this.unbindDocumentNavigation();
-    this.documentNavigationHandler = (event) => {
-      if (!this.surface?.contains(event.target)) {
-        return;
-      }
-      const navTarget = event.target.closest?.("[data-phone-nav]");
-      if (!navTarget) {
-        return;
-      }
-      event.stopPropagation();
-      if (navTarget.dataset.phoneNav === "back") {
-        this.handleSystemBack();
-        return;
-      }
-      if (navTarget.dataset.phoneNav === "home") {
-        if (this.runner?.state?.visuals?.phone?.isButtonEnabled === false) {
-          return;
-        }
-        this.runner?.openPhoneApp?.("home");
-      }
-    };
-    document.addEventListener("click", this.documentNavigationHandler, true);
+    this.documentNavigationHandler = bindPhoneNavigation(this.surface, {
+      onBack: () => this.handleSystemBack(),
+      onHome: () => this.runner?.openPhoneApp?.("home"),
+      isHomeEnabled: () => this.runner?.state?.visuals?.phone?.isButtonEnabled !== false
+    });
   }
 
   /**
@@ -212,7 +169,7 @@ export class TextingRenderer {
     if (!this.documentNavigationHandler) {
       return;
     }
-    document.removeEventListener("click", this.documentNavigationHandler, true);
+    this.documentNavigationHandler();
     this.documentNavigationHandler = null;
   }
 
@@ -224,18 +181,15 @@ export class TextingRenderer {
    * @returns {void}
    */
   bindAdvanceDeadZones() {
-    const deadZones = this.surface.querySelectorAll(".status-bar, .phone-header, .phone-nav-bar");
-    for (const deadZone of deadZones) {
-      for (const eventName of PHONE_ADVANCE_DEAD_ZONE_EVENTS) {
-        deadZone.addEventListener(eventName, stopStoryAdvance);
-      }
-    }
+    bindPhoneAdvanceDeadZones(this.surface, {
+      selector: ".status-bar, .phone-header, .phone-nav-bar"
+    });
   }
 
   /**
    * Handles the Android-style system back button inside the texting chrome.
-   * Texting can be either a phone app or the active story surface, so the
-   * button falls through from app navigation to normal VN rollback.
+   * Texting can be either a phone app or the active story surface. Back only
+   * navigates phone-app state; story rollback remains a VN-level control.
    *
    * @returns {void}
    */
@@ -247,11 +201,24 @@ export class TextingRenderer {
     }
     if (this.runner?.isPhoneOpen?.()) {
       this.runner.goBackPhoneApp?.();
+    }
+  }
+
+  /**
+   * Enables Android back only when it can navigate phone-app state.
+   * Story-driven texting is already the destination, so Back is a no-op there
+   * instead of acting like rollback or popping the player out of the story.
+   *
+   * @returns {void}
+   */
+  updateSystemBackButton() {
+    const backButton = this.surface?.querySelector("[data-phone-nav='back']");
+    if (!backButton) {
       return;
     }
-    if (this.runner?.canRollBack?.()) {
-      this.runner.rollBack?.();
-    }
+    const canNavigatePhone = Boolean(this.runner?.isPhoneOpen?.());
+    backButton.disabled = !canNavigatePhone;
+    backButton.setAttribute("aria-disabled", String(!canNavigatePhone));
   }
 
   /**
@@ -331,7 +298,7 @@ export class TextingRenderer {
     }
 
     for (const eventName of PHONE_ADVANCE_DEAD_ZONE_EVENTS) {
-      button.addEventListener(eventName, stopStoryAdvance);
+      button.addEventListener(eventName, stopPhoneStoryAdvance);
     }
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -385,6 +352,7 @@ export class TextingRenderer {
     if (!this.surface || !this.messageList) {
       return;
     }
+    this.updateSystemBackButton();
     if (this.shouldShowInbox()) {
       if (this.selectedThreadId) {
         this.renderThreadById(textingState, { characters }, this.selectedThreadId);
@@ -466,7 +434,7 @@ export class TextingRenderer {
       avatar.style.color = readableTextColor(contact.color);
     }
     for (const eventName of PHONE_ADVANCE_DEAD_ZONE_EVENTS) {
-      button.addEventListener(eventName, stopStoryAdvance);
+      button.addEventListener(eventName, stopPhoneStoryAdvance);
     }
     button.addEventListener("click", (event) => {
       event.stopPropagation();

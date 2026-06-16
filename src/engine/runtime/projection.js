@@ -10,9 +10,12 @@ import { projectSurfaceState, readSurfaceStateSlice } from "../surfaces/index.js
  */
 export function syncBackgroundState(runner, { instant = false } = {}) {
   if (runner.state.visuals?.background) {
-    runner.onBackground(runner.state.visuals.background.id, {
+    const background = runner.state.visuals.background;
+    runner.onBackground(background.asset ?? background.id, {
       transition: instant ? "cut" : runner.state.visuals.background.transition,
-      duration: runner.state.visuals.background.duration
+      duration: runner.state.visuals.background.duration,
+      fit: runner.state.visuals.background.fit,
+      position: runner.state.visuals.background.position
     });
   } else {
     runner.onBackground(null);

@@ -1,10 +1,38 @@
+import {
+  applyMediaTransform,
+  normalizeMediaEntry,
+  normalizeMediaLayer
+} from "./media-state.js";
+
 const DEFAULT_OUTFIT = "casual";
 const DEFAULT_EXPRESSION = "neutral";
 const DEFAULT_BODY = "default";
 const DEFAULT_LAYER = "characters";
 
 const SPRITE_TRANSFORM_FIELDS = ["at", "x", "y", "scale", "alpha", "z", "layer", "transition", "duration", "easing"];
-const IMAGE_TRANSFORM_FIELDS = ["at", "x", "y", "scale", "alpha", "z", "layer", "transition", "duration", "easing", "fit"];
+const IMAGE_TRANSFORM_FIELDS = [
+  "at",
+  "x",
+  "y",
+  "width",
+  "height",
+  "scale",
+  "alpha",
+  "z",
+  "layer",
+  "fit",
+  "position",
+  "crop",
+  "transition",
+  "duration",
+  "easing",
+  "startAt",
+  "endAt",
+  "loop",
+  "volume",
+  "muted",
+  "mode"
+];
 
 /**
  * Creates the serializable visual state owned by the runner.
@@ -76,21 +104,39 @@ function normalizeVisibleSprite(sprite = {}) {
  * @returns {object} Normalized image entry.
  */
 function normalizeVisibleImage(image = {}) {
-  return {
+  const kind = image.kind === "video" ? "video" : image.kind ?? "image";
+  const layer = image.layer ?? (kind === "cg" ? "cg" : "front");
+  const normalized = normalizeMediaEntry({
     id: image.id,
     asset: image.asset,
-    kind: image.kind ?? "image",
+    kind,
+    role: image.role ?? "irl",
     at: image.at ?? null,
     x: image.x ?? null,
     y: image.y ?? null,
+    width: image.width ?? null,
+    height: image.height ?? null,
     scale: image.scale ?? 1,
     alpha: image.alpha ?? 1,
     z: image.z ?? (image.kind === "cg" ? 5 : 45),
-    layer: image.layer ?? (image.kind === "cg" ? "cg" : "foreground"),
+    layer,
     transition: image.transition ?? null,
     duration: image.duration ?? null,
     easing: image.easing ?? null,
-    fit: image.fit ?? (image.kind === "cg" ? "cover" : "contain")
+    fit: image.fit ?? (image.kind === "cg" ? "cover" : "contain"),
+    position: image.position ?? "center",
+    crop: image.crop ?? null,
+    startAt: image.startAt ?? null,
+    endAt: image.endAt ?? null,
+    loop: image.loop ?? false,
+    volume: image.volume ?? 1,
+    muted: image.muted ?? false,
+    mode: image.mode ?? "hold"
+  });
+  return {
+    ...normalized,
+    kind,
+    layer: normalizeMediaLayer(normalized.layer, kind === "cg" ? "cg" : "front")
   };
 }
 
@@ -212,14 +258,24 @@ export function applyShowIrlImage(sprites, command) {
     at: command.at ?? current?.at ?? (kind === "cg" ? "center" : null),
     x: command.x ?? current?.x ?? null,
     y: command.y ?? current?.y ?? null,
+    width: command.width ?? current?.width ?? null,
+    height: command.height ?? current?.height ?? null,
     scale: command.scale ?? current?.scale ?? 1,
     alpha: command.alpha ?? current?.alpha ?? 1,
     z: command.z ?? current?.z ?? (kind === "cg" ? 5 : 45),
-    layer: command.layer ?? current?.layer ?? (kind === "cg" ? "cg" : "foreground"),
+    layer: command.layer ?? current?.layer ?? (kind === "cg" ? "cg" : "front"),
     transition: command.transition ?? current?.transition ?? null,
     duration: command.duration ?? current?.duration ?? null,
     easing: command.easing ?? current?.easing ?? null,
-    fit: command.fit ?? current?.fit ?? (kind === "cg" ? "cover" : "contain")
+    fit: command.fit ?? current?.fit ?? (kind === "cg" ? "cover" : "contain"),
+    position: command.position ?? current?.position ?? "center",
+    crop: command.crop ?? current?.crop ?? null,
+    startAt: command.startAt ?? current?.startAt ?? null,
+    endAt: command.endAt ?? current?.endAt ?? null,
+    loop: command.loop ?? current?.loop ?? false,
+    volume: command.volume ?? current?.volume ?? 1,
+    muted: command.muted ?? current?.muted ?? false,
+    mode: command.mode ?? current?.mode ?? "hold"
   });
 
   if (kind === "cg") {
@@ -312,11 +368,13 @@ export function applyIrlImageTransform(sprites, id, transform = {}) {
   if (!image) {
     return;
   }
+  const patch = {};
   for (const field of IMAGE_TRANSFORM_FIELDS) {
     if (transform[field] !== undefined) {
-      image[field] = transform[field];
+      patch[field] = transform[field];
     }
   }
+  Object.assign(image, applyMediaTransform(image, patch));
 }
 
 /**

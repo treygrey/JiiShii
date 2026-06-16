@@ -27,5 +27,24 @@
     "ids": [],
     "ambiguities": {}
   },
-  "sprites": {}
+  "sprites": {
+    "alex": {
+      "outfits": [],
+      "expressions": [
+        "clasped_hands_smile",
+        "crossed_arms",
+        "hand_on_cheek",
+        "hands_behind_back",
+        "peace_sign",
+        "puzzled",
+        "questioning",
+        "smile",
+        "smile_bent_arm",
+        "thinking",
+        "wave",
+        "wink"
+      ],
+      "bodies": []
+    }
+  }
 }

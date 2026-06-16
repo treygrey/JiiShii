@@ -22,9 +22,32 @@ describe("visual state helpers", () => {
     setBackgroundState(visuals, { id: "kitchen day", transition: "cut", duration: 200 });
 
     expect(visuals.background).toEqual({
-      id: "kitchen day",
+      id: "__background",
+      asset: "kitchen day",
+      kind: "image",
+      role: "background",
+      layer: "background",
+      fit: "cover",
+      position: "center",
+      at: null,
+      x: null,
+      y: null,
+      width: null,
+      height: null,
+      scale: 1,
+      alpha: 1,
+      z: null,
+      crop: null,
       transition: "cut",
-      duration: 200
+      duration: 200,
+      easing: null,
+      startAt: null,
+      endAt: null,
+      loop: false,
+      volume: 1,
+      muted: false,
+      mode: "hold",
+      endImage: null
     });
   });
 
@@ -131,6 +154,6 @@ describe("visual state helpers", () => {
     clone.texting.messages[0].message = "changed";
 
     expect(visuals.texting.messages[0].message).toBe("hi");
-    expect(clone.streaming.window).toEqual({ state: "offline", image: null });
+    expect(clone.streaming.window).toEqual({ state: "offline", image: null, media: null });
   });
 });

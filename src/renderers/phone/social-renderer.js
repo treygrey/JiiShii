@@ -1,4 +1,11 @@
 import { SOCIAL_SURFACE } from "../../engine/surfaces/index.js";
+import { renderMarkup } from "../../engine/dom/markup.js";
+import {
+  escapeAttr,
+  escapeHtml,
+  escapeInitial,
+  safeBackgroundStyle
+} from "../html.js";
 import { PhoneShell, stopPhoneStoryAdvance } from "./phone-shell.js";
 
 const COMMENT_ICON = `
@@ -75,7 +82,6 @@ export class SocialRenderer {
   mount() {
     this.shell.mount({ className: "social-phone-shell", title: "Social" });
     this.surface = this.shell.surface;
-    this.bindHomeChrome();
   }
 
   /**
@@ -93,26 +99,6 @@ export class SocialRenderer {
   showTransition() {}
   showChoice() {}
   showEnd() {}
-
-  /**
-   * Routes shared phone Home chrome through the renderer-owned runner handle.
-   *
-   * @returns {void}
-   */
-  bindHomeChrome() {
-    for (const button of this.surface?.querySelectorAll("[data-phone-nav='home']") ?? []) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (this.runner?.state?.visuals?.phone?.isButtonEnabled === false) {
-          return;
-        }
-        this.runner?.openPhoneApp?.("home");
-      });
-      button.addEventListener("pointerup", (event) => {
-        event.stopPropagation();
-      });
-    }
-  }
 
   /**
    * Shows a shared in-phone notification toast.
@@ -295,15 +281,17 @@ export class SocialRenderer {
    */
   renderAccountProfile(profile, social) {
     const followed = Boolean(social.follows?.[profile.id]);
+    const profileId = escapeAttr(profile.id);
+    const profileName = escapeHtml(profile.name);
     return `
       <article class="social-account-card">
-        <span class="social-avatar" style="${profile.color ? `background:${profile.color}` : ""}">${profile.name.slice(0, 1)}</span>
+        <span class="social-avatar" style="${safeBackgroundStyle(profile.color)}">${escapeInitial(profile.name)}</span>
         <div class="social-account-copy">
-          <strong>${profile.name}</strong>
+          <strong>${profileName}</strong>
           <span>${profile.postCount} ${profile.postCount === 1 ? "post" : "posts"}</span>
-          ${profile.latestText ? `<p>${profile.latestText}</p>` : ""}
+          ${profile.latestText ? `<p>${renderMarkup(profile.latestText)}</p>` : ""}
         </div>
-        <button class="social-follow-button" type="button" data-social-follow="${profile.id}" ${followed ? "disabled" : ""}>
+        <button class="social-follow-button" type="button" data-social-follow="${profileId}" ${followed ? "disabled" : ""}>
           ${followed ? "Following" : "Follow"}
         </button>
       </article>
@@ -328,13 +316,13 @@ export class SocialRenderer {
     return `
       <article class="social-post">
         <header>
-          <span class="social-avatar" style="${character.color ? `background:${character.color}` : ""}">${name.slice(0, 1)}</span>
-          <strong>${name}</strong>
+          <span class="social-avatar" style="${safeBackgroundStyle(character.color)}">${escapeInitial(name)}</span>
+          <strong>${escapeHtml(name)}</strong>
         </header>
-        ${post.text ? `<p>${post.text}</p>` : ""}
+        ${post.text ? `<p>${renderMarkup(post.text)}</p>` : ""}
         ${src ? `
-          <button class="social-post-image-button" type="button" data-social-image="${post.id}" aria-label="Open image">
-            <img src="${src}" alt="">
+          <button class="social-post-image-button" type="button" data-social-image="${escapeAttr(post.id)}" aria-label="Open image">
+            <img src="${escapeAttr(src)}" alt="">
           </button>
         ` : ""}
         <footer class="social-post-actions">
@@ -346,7 +334,7 @@ export class SocialRenderer {
             animateLike: this.animatingLikeId === post.id
           })}
           ${this.renderMetricButton("view", "Views", metrics.views, VIEW_ICON)}
-          ${post.poster && !followed ? `<button class="social-follow-button social-follow-button--inline" type="button" data-social-follow="${post.poster}" data-social-flag="${post.followFlag ?? ""}">Follow</button>` : ""}
+          ${post.poster && !followed ? `<button class="social-follow-button social-follow-button--inline" type="button" data-social-follow="${escapeAttr(post.poster)}" data-social-flag="${escapeAttr(post.followFlag ?? "")}">Follow</button>` : ""}
         </footer>
       </article>
     `;
@@ -380,7 +368,7 @@ export class SocialRenderer {
   renderMetricButton(kind, label, count, icon, post = null) {
     const countText = this.formatMetricCount(count);
     const likeAttrs = kind === "like" && post
-      ? `data-social-like="${post.id}" data-social-flag="${post.likeFlag ?? ""}"`
+      ? `data-social-like="${escapeAttr(post.id)}" data-social-flag="${escapeAttr(post.likeFlag ?? "")}"`
       : "";
     const likedClass = kind === "like" && post?.liked ? " is-liked" : "";
     const animateClass = kind === "like" && post?.animateLike ? " is-like-flashing" : "";
@@ -448,7 +436,7 @@ export class SocialRenderer {
     this.shell.content.innerHTML = `
       <div class="social-image-detail">
         <div class="social-image-frame">
-          ${src ? `<img src="${src}" alt="">` : `<div class="phone-empty-state">${post.image}</div>`}
+          ${src ? `<img src="${escapeAttr(src)}" alt="">` : `<div class="phone-empty-state">${escapeHtml(post.image)}</div>`}
         </div>
       </div>
     `;

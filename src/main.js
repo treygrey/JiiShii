@@ -24,9 +24,11 @@ import { isEditableTarget, resolveShellShortcut } from "./ui/shell-shortcuts.js"
 import { TextingRenderer } from "./renderers/texting/texting-renderer.js";
 import { IrlRenderer } from "./renderers/irl/irl-renderer.js";
 import { StreamingRenderer } from "./renderers/streaming/streaming-renderer.js";
+import { PhoneCallRenderer } from "./renderers/phone-call/phone-call-renderer.js";
 import { PhoneHomeRenderer } from "./renderers/phone/phone-home-renderer.js";
 import { GalleryRenderer } from "./renderers/phone/gallery-renderer.js";
 import { SocialRenderer } from "./renderers/phone/social-renderer.js";
+import { CallsRenderer } from "./renderers/phone/calls-renderer.js";
 import { loadGamePackage } from "./player/package-loader.js";
 
 let GAME_PACKAGE = null;
@@ -136,6 +138,26 @@ function readFirstStorage(keys) {
     }
   }
   return null;
+}
+
+/**
+ * Resolves the scene a new game should start from. In dev builds, authors can
+ * pass `?scene=scene-id` to jump straight into a discovered scene harness
+ * without editing game config.
+ *
+ * @returns {object} Scene object.
+ */
+function resolveStartScene() {
+  const requestedScene = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get("scene")
+    : null;
+  if (requestedScene && SCENES[requestedScene]) {
+    return SCENES[requestedScene];
+  }
+  if (requestedScene) {
+    console.warn(`[scene] Unknown ?scene=${requestedScene}; starting ${FIRST_SCENE_ID}.`);
+  }
+  return SCENES[FIRST_SCENE_ID];
 }
 
 /**
@@ -937,6 +959,7 @@ function startGame({ load }) {
     getSettings: getEffectiveSettings,
     onLog: logMessage,
     resolveImage,
+    resolveVideo,
     resolveSprite,
     resolveExpression
   };
@@ -944,9 +967,11 @@ function startGame({ load }) {
     texting: new TextingRenderer(stage, rendererOptions),
     irl: new IrlRenderer(stage, rendererOptions),
     streaming: new StreamingRenderer(stage, rendererOptions),
+    phone_call: new PhoneCallRenderer(stage, rendererOptions),
     phone_home: new PhoneHomeRenderer(stage, rendererOptions),
     gallery: new GalleryRenderer(stage, rendererOptions),
     social: new SocialRenderer(stage, rendererOptions),
+    calls: new CallsRenderer(stage, rendererOptions),
     ...createDiscoveredSurfaceRenderers(rendererOptions)
   };
 
@@ -966,7 +991,7 @@ function startGame({ load }) {
   });
 
   runner = new SceneRunner({
-    initialScene: SCENES[FIRST_SCENE_ID],
+    initialScene: resolveStartScene(),
     initialState: createInitialState(),
     renderers,
     compositor,

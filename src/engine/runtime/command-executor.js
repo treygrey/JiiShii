@@ -9,6 +9,7 @@ const ROLLBACK_BEAT_TYPES = new Set([
   "textBlock",
   "lineBlock",
   "streamImage",
+  "streamVideo",
   "streamChatBlock",
   "streamNarration",
   "input",
@@ -115,11 +116,15 @@ export function executeCommand(runner, command) {
     setBackgroundState(runner.state.visuals, {
       id: command.id,
       transition: command.transition,
-      duration: command.duration
+      duration: command.duration,
+      fit: command.fit,
+      position: command.position
     });
     runner.onBackground(command.id, {
       transition: command.transition,
-      duration: command.duration
+      duration: command.duration,
+      fit: command.fit,
+      position: command.position
     });
     runner.state.currentCommandIndex += 1;
     return;

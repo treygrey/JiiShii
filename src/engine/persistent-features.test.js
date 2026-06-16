@@ -30,6 +30,8 @@ function fakeRenderer(surface, commands, projections = []) {
     renderPhoneHomeState: vi.fn(),
     renderGalleryState: vi.fn(),
     renderSocialState: vi.fn(),
+    renderPhoneCallState: vi.fn(),
+    renderCallsState: vi.fn(),
     clearChoices: vi.fn(),
     setExitTransition: vi.fn(),
     setImageExitTransition: vi.fn(),
@@ -41,10 +43,13 @@ function fakeRenderer(surface, commands, projections = []) {
     showLineBlock: vi.fn(),
     renderLineBlockInstant: vi.fn(),
     showChoice: vi.fn(),
+    showCallLine: vi.fn(),
     setStreamLayout: vi.fn(),
     setStreamTitle: vi.fn(),
     setStreamWindow: vi.fn(),
     showStreamImage: vi.fn(),
+    showStreamVideo: vi.fn(),
+    renderStreamVideoInstant: vi.fn(),
     showStreamChatBlock: vi.fn(),
     renderStreamChatBlockInstant: vi.fn(),
     showTransition: vi.fn(),
@@ -77,6 +82,7 @@ function fakeRenderers() {
     streaming: fakeRenderer("streaming", [
       "streamLayout",
       "streamImage",
+      "streamVideo",
       "streamChatBlock",
       "streamNarration",
       "streamTitle",
@@ -88,7 +94,9 @@ function fakeRenderers() {
     ], ["renderStreamingState"]),
     phone_home: fakeRenderer("phone_home", ["choice", "transition"], ["renderPhoneHomeState"]),
     gallery: fakeRenderer("gallery", ["choice", "transition"], ["renderGalleryState"]),
-    social: fakeRenderer("social", ["choice", "transition"], ["renderSocialState"])
+    social: fakeRenderer("social", ["choice", "transition"], ["renderSocialState"]),
+    phone_call: fakeRenderer("phone_call", ["call", "endCall", "choice", "transition"], ["renderPhoneCallState"]),
+    calls: fakeRenderer("calls", ["choice", "transition"], ["renderCallsState"])
   };
 }
 

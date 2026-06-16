@@ -1,4 +1,4 @@
-const DEFAULT_PHONE_APPS = ["texting", "gallery", "social"];
+const DEFAULT_PHONE_APPS = ["texting", "calls", "gallery", "social"];
 
 /**
  * Creates the shared phone state used by phone-family surfaces.

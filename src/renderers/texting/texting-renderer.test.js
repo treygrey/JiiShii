@@ -71,7 +71,7 @@ describe("TextingRenderer", () => {
     expect(renderer.runner.rollBack).not.toHaveBeenCalled();
   });
 
-  it("uses system back for rollback when texting is the story surface", () => {
+  it("treats system back as a no-op when texting is the story surface", () => {
     const renderer = new TextingRenderer(null);
     renderer.runner = {
       isTextingInboxMode: vi.fn(() => false),
@@ -84,7 +84,35 @@ describe("TextingRenderer", () => {
     renderer.handleSystemBack();
 
     expect(renderer.runner.goBackPhoneApp).not.toHaveBeenCalled();
-    expect(renderer.runner.canRollBack).toHaveBeenCalledOnce();
-    expect(renderer.runner.rollBack).toHaveBeenCalledOnce();
+    expect(renderer.runner.canRollBack).not.toHaveBeenCalled();
+    expect(renderer.runner.rollBack).not.toHaveBeenCalled();
+  });
+
+  it("disables system back while texting is the story surface", () => {
+    const renderer = new TextingRenderer(null);
+    const backButton = { setAttribute: vi.fn() };
+    renderer.surface = { querySelector: vi.fn(() => backButton) };
+    renderer.runner = {
+      isPhoneOpen: vi.fn(() => false)
+    };
+
+    renderer.updateSystemBackButton();
+
+    expect(backButton.disabled).toBe(true);
+    expect(backButton.setAttribute).toHaveBeenCalledWith("aria-disabled", "true");
+  });
+
+  it("enables system back while Messages is open as a phone app", () => {
+    const renderer = new TextingRenderer(null);
+    const backButton = { setAttribute: vi.fn() };
+    renderer.surface = { querySelector: vi.fn(() => backButton) };
+    renderer.runner = {
+      isPhoneOpen: vi.fn(() => true)
+    };
+
+    renderer.updateSystemBackButton();
+
+    expect(backButton.disabled).toBe(false);
+    expect(backButton.setAttribute).toHaveBeenCalledWith("aria-disabled", "false");
   });
 });

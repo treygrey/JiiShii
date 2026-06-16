@@ -24,6 +24,7 @@ import {
   setStreamWindowState,
   setTextingThread
 } from "../../state/visual-state.js";
+import { normalizeStreamMedia } from "../../state/media-state.js";
 import {
   createGalleryState,
   createSocialState,
@@ -40,6 +41,7 @@ export const STREAMING_SURFACE = defineSurfaceModule({
     commands: [
       "streamLayout",
       "streamImage",
+      "streamVideo",
       "streamChatBlock",
       "streamNarration",
       "streamTitle",
@@ -53,6 +55,7 @@ export const STREAMING_SURFACE = defineSurfaceModule({
   commands: {
     streamLayout: { kind: "render", surface: "streaming", needsSurface: true },
     streamImage: { kind: "render", surface: "streaming", needsSurface: true, blocks: true },
+    streamVideo: { kind: "render", surface: "streaming", needsSurface: true, blocks: true },
     streamChatBlock: { kind: "render", surface: "streaming", needsSurface: true },
     streamNarration: { kind: "render", surface: "streaming", needsSurface: true, blocks: true },
     streamTitle: { kind: "render", surface: "streaming", needsSurface: true },
@@ -86,7 +89,11 @@ export const STREAMING_SURFACE = defineSurfaceModule({
         runner.beginReadableBeat();
         runner.compositor.hideNarration();
         runner.isWaitingForPlayer = true;
-        setStreamWindowState(runner.state.visuals, { state: "live", image: command.image });
+        setStreamWindowState(runner.state.visuals, {
+          state: "live",
+          image: command.image,
+          media: normalizeStreamMedia({ kind: "image", asset: command.image, ...command })
+        });
         renderer.showStreamImage(command, {
           onComplete: () => {
             runner.advanceCommand();
@@ -98,8 +105,78 @@ export const STREAMING_SURFACE = defineSurfaceModule({
         });
       },
       instant: ({ runner, renderer, command }) => {
-        setStreamWindowState(runner.state.visuals, { state: "live", image: command.image });
+        setStreamWindowState(runner.state.visuals, {
+          state: "live",
+          image: command.image,
+          media: normalizeStreamMedia({ kind: "image", asset: command.image, ...command })
+        });
         renderer.renderStreamImageInstant(command);
+        runner.advanceCommand();
+      }
+    },
+    streamVideo: {
+      run: ({ runner, renderer, command }) => {
+        const media = normalizeStreamMedia({
+          ...command,
+          kind: "video",
+          asset: command.video,
+          mode: command.mode,
+          endImage: command.image
+        });
+        setStreamWindowState(runner.state.visuals, { state: "live", media });
+        if (media.mode === "loop") {
+          renderer.renderStreamVideoInstant?.(command);
+          runner.advanceCommand();
+          runner.save();
+          return;
+        }
+        const waitForVideo = command.wait === true;
+        const finishVideo = () => {
+          if (media.mode === "replace") {
+            setStreamWindowState(runner.state.visuals, {
+              state: "live",
+              image: media.endImage,
+              media: normalizeStreamMedia({ kind: "image", asset: media.endImage, image: media.endImage, fit: media.fit })
+            });
+          }
+        };
+        if (!waitForVideo) {
+          renderer.showStreamVideo(command, {
+            blocking: false,
+            onComplete: () => {
+              finishVideo();
+              runner.save();
+            }
+          });
+          runner.advanceCommand();
+          runner.save();
+          return;
+        }
+        runner.beginReadableBeat();
+        runner.compositor.hideNarration();
+        runner.isWaitingForPlayer = true;
+        renderer.showStreamVideo(command, {
+          blocking: true,
+          onComplete: () => {
+            finishVideo();
+            runner.advanceCommand();
+            runner.save();
+            if (!runner.maybeAutoAdvanceToDecision()) {
+              runner.onIdle();
+            }
+          }
+        });
+      },
+      instant: ({ runner, renderer, command }) => {
+        const media = normalizeStreamMedia({
+          ...command,
+          kind: "video",
+          asset: command.video,
+          mode: command.mode,
+          endImage: command.image
+        });
+        setStreamWindowState(runner.state.visuals, { state: "live", media });
+        renderer.renderStreamVideoInstant?.(command);
         runner.advanceCommand();
       }
     },

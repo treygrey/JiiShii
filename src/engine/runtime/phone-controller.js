@@ -126,6 +126,9 @@ export function getPhoneReturnSurface(runner) {
  * @returns {void}
  */
 export function openPhoneApp(runner, app = "home") {
+  if (runner.state.visuals.phoneCall?.active) {
+    return;
+  }
   const surfaceId = app === "home" ? "phone_home" : app;
   if (!runner.surfaceRegistry.has(surfaceId)) {
     return;
@@ -169,6 +172,9 @@ export function openPhoneApp(runner, app = "home") {
  * @returns {void}
  */
 export function goBackPhoneApp(runner) {
+  if (runner.state.visuals.phoneCall?.active) {
+    return;
+  }
   if (!runner.isPhoneOpen()) {
     return;
   }
@@ -190,6 +196,12 @@ export function goBackPhoneApp(runner) {
  * @returns {void}
  */
 export function togglePhone(runner) {
+  if (runner.state.visuals.phoneCall?.active) {
+    return;
+  }
+  if (runner.compositor?.activeInputPanel) {
+    return;
+  }
   if (runner.isPhoneOpen()) {
     runner.returnToStorySurface();
     return;

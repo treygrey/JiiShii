@@ -1,4 +1,5 @@
 import { STREAMING_SURFACE } from "../../engine/surfaces/index.js";
+import { renderMarkup } from "../../engine/dom/markup.js";
 import { createChoiceBand } from "../choice-band.js";
 
 const CHAT_JITTER_MIN = 130;
@@ -49,11 +50,12 @@ export class StreamingRenderer {
    * @param {Function} [options.getSettings] - Returns live player settings.
    * @param {Function} [options.onLog] - History logger.
    */
-  constructor(appRoot, { getSettings, onLog, resolveImage } = {}) {
+  constructor(appRoot, { getSettings, onLog, resolveImage, resolveVideo } = {}) {
     this.appRoot = appRoot;
     this.getSettings = getSettings ?? (() => ({ textSpeed: 0.6 }));
     this.onLog = onLog ?? (() => {});
     this.resolveImage = resolveImage ?? (() => null);
+    this.resolveVideo = resolveVideo ?? (() => null);
     this.runner = null;
     this.surface = null;
     this.box = null;
@@ -137,10 +139,7 @@ export class StreamingRenderer {
    * @returns {void}
    */
   unmount() {
-    if (this.activeReveal?.timeoutId) {
-      clearTimeout(this.activeReveal.timeoutId);
-    }
-    this.activeReveal = null;
+    this.cancelActiveReveal();
     this.surface?.remove();
     this.choiceOverlay?.remove();
     this.surface = null;
@@ -155,10 +154,26 @@ export class StreamingRenderer {
    * @returns {void}
    */
   reset() {
+    this.cancelActiveReveal();
     if (this.chatLog) {
       this.chatLog.innerHTML = "";
     }
     this.clearChoices();
+  }
+
+  /**
+   * Cancels any in-flight reveal without completing its story beat.
+   *
+   * Rollback/load projection replaces DOM from runner-owned state. Letting an
+   * orphaned timeout finish afterward would append stale chat rows over the
+   * freshly projected log.
+   *
+   * @returns {void}
+   */
+  cancelActiveReveal() {
+    if (this.activeReveal?.timeoutId) {
+      clearTimeout(this.activeReveal.timeoutId);
+    }
     this.activeReveal = null;
   }
 
@@ -261,10 +276,10 @@ export class StreamingRenderer {
 
     if (command.state === "live") {
       this.streamWindow.classList.add("is-live");
-      const url = command.image ? this.resolveImage(command.image) : null;
-      this.streamWindow.innerHTML = url
-        ? `<img src="${url}" alt="stream" />`
-        : `<div class="stream-window-inner stream-window-live"><span>on cam</span></div>`;
+      const didRender = this.renderStreamMedia(command.media ?? (command.image ? { kind: "image", asset: command.image, fit: command.fit } : null));
+      if (!didRender) {
+        this.streamWindow.innerHTML = `<div class="stream-window-inner stream-window-live"><span>on cam</span></div>`;
+      }
       pill.className = "stream-pill is-live";
       pill.textContent = "LIVE";
       viewers.hidden = false;
@@ -281,6 +296,71 @@ export class StreamingRenderer {
       pill.textContent = "OFFLINE";
       viewers.hidden = true;
     }
+  }
+
+  /**
+   * Renders image or video media into the stream window.
+   *
+   * @param {object|null} media - Stream media entry.
+   * @returns {boolean} True when media rendered.
+   */
+  renderStreamMedia(media) {
+    if (!this.streamWindow || !media?.asset) {
+      return false;
+    }
+    const isVideo = media.kind === "video";
+    const url = isVideo ? this.resolveVideo(media.asset) : this.resolveImage(media.asset);
+    if (!url) {
+      return false;
+    }
+    this.streamWindow.innerHTML = "";
+    const element = document.createElement(isVideo ? "video" : "img");
+    element.className = "stream-window-media";
+    element.style.objectFit = media.fit ?? "cover";
+    element.style.objectPosition = media.position ?? "center";
+    if (isVideo) {
+      element.src = url;
+      element.playsInline = true;
+      element.autoplay = true;
+      element.loop = media.loop === true;
+      element.muted = media.muted !== false;
+      element.volume = Math.min(1, Math.max(0, media.volume ?? 1));
+      if (Number.isFinite(media.startAt)) {
+        element.addEventListener("loadedmetadata", () => {
+          element.currentTime = media.startAt / 1000;
+        }, { once: true });
+      }
+      this.bindVideoEndTime(element, media);
+      element.play?.()?.catch?.(() => {
+        element.muted = true;
+        element.play?.();
+      });
+    } else {
+      element.src = url;
+      element.alt = "stream";
+    }
+    this.streamWindow.append(element);
+    return true;
+  }
+
+  /**
+   * Stops a video at an authored end point.
+   *
+   * @param {HTMLVideoElement} video - Video element.
+   * @param {object} media - Stream media entry.
+   * @returns {void}
+   */
+  bindVideoEndTime(video, media) {
+    if (!Number.isFinite(media.endAt)) {
+      return;
+    }
+    const endSeconds = media.endAt / 1000;
+    video.addEventListener("timeupdate", () => {
+      if (video.currentTime >= endSeconds) {
+        video.pause();
+        video.dispatchEvent(new Event("ended"));
+      }
+    });
   }
 
   // ---- Chat ----
@@ -304,7 +384,7 @@ export class StreamingRenderer {
     span.style.color = message.color ?? chatColor(name);
     const body = document.createElement("span");
     body.className = "chat-text";
-    body.textContent = message.message ?? message.text ?? "";
+    body.innerHTML = renderMarkup(message.message ?? message.text ?? "");
     row.append(span, body);
     this.chatLog.append(row);
     this.chatLog.scrollTop = this.chatLog.scrollHeight;
@@ -319,6 +399,7 @@ export class StreamingRenderer {
    * @returns {void}
    */
   showStreamChatBlock(command, { onComplete }) {
+    this.cancelActiveReveal();
     const pending = [...command.messages];
     const revealState = {
       isRunning: true,
@@ -357,6 +438,7 @@ export class StreamingRenderer {
    * @returns {void}
    */
   renderStreamChatBlockInstant(command) {
+    this.cancelActiveReveal();
     for (const m of command.messages) {
       this.renderChatMessage(m);
     }
@@ -370,7 +452,8 @@ export class StreamingRenderer {
    * @returns {void}
    */
   showStreamImage(command, { onComplete }) {
-    this.setStreamWindow({ state: "live", image: command.image });
+    this.cancelActiveReveal();
+    this.setStreamWindow({ state: "live", image: command.image, media: { kind: "image", asset: command.image, ...command } });
     this.activeReveal = {
       isRunning: true,
       timeoutId: null,
@@ -379,6 +462,51 @@ export class StreamingRenderer {
         onComplete();
       }
     };
+  }
+
+  /**
+   * Plays a stream-window video beat.
+   *
+   * @param {object} command - Stream video command.
+   * @param {object} options - { onComplete, blocking }.
+   * @returns {void}
+   */
+  showStreamVideo(command, { onComplete, blocking = true }) {
+    this.cancelActiveReveal();
+    const media = {
+      ...command,
+      kind: "video",
+      asset: command.video,
+      endImage: command.image
+    };
+    this.setStreamWindow({ state: "live", media });
+    const video = this.streamWindow?.querySelector("video");
+    const mode = command.mode ?? "hold";
+    let done = false;
+    const finish = () => {
+      if (done) {
+        return;
+      }
+      done = true;
+      if (mode === "replace" && command.image) {
+        this.setStreamWindow({ state: "live", image: command.image, media: { kind: "image", asset: command.image, fit: command.fit } });
+      }
+      this.activeReveal = null;
+      onComplete();
+    };
+    if (blocking) {
+      this.activeReveal = {
+        isRunning: true,
+        timeoutId: null,
+        finishNow: finish
+      };
+    }
+    if (!video) {
+      finish();
+      return;
+    }
+    video.addEventListener("ended", finish, { once: true });
+    video.addEventListener("error", finish, { once: true });
   }
 
   /**
@@ -474,7 +602,27 @@ export class StreamingRenderer {
    * @returns {void}
    */
   renderStreamImageInstant(command) {
+    this.cancelActiveReveal();
     this.setStreamWindow({ state: "live", image: command.image });
+  }
+
+  /**
+   * Renders stream video state instantly for load/replay.
+   *
+   * @param {object} command - Stream video command.
+   * @returns {void}
+   */
+  renderStreamVideoInstant(command) {
+    this.cancelActiveReveal();
+    this.setStreamWindow({
+      state: "live",
+      media: {
+        ...command,
+        kind: "video",
+        asset: command.video,
+        endImage: command.image
+      }
+    });
   }
 
   /**

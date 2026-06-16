@@ -157,13 +157,22 @@ export function buildSpriteManifest({ spritesDir = SPRITES_DIR } = {}) {
     const foreground = { ...flatForeground, ...indexFolder(join(charDir, "foreground")) };
     const layers = { heads, bodies, outfits, emotions: expressions, overlays, foreground };
     const hasRecipe = hasCharacterRecipe(charDir);
+    const hasOnlyFullBodyExpressions = (
+      !hasRecipe &&
+      Object.keys(expressions).length > 0 &&
+      Object.keys(heads).length === 0 &&
+      Object.keys(bodies).length === 0 &&
+      Object.keys(outfits).length === 0 &&
+      Object.keys(overlays).length === 0 &&
+      Object.keys(foreground).length === 0
+    );
 
     if (
       hasRecipe ||
       Object.values(layers).some((layerMap) => Object.keys(layerMap).length > 0)
     ) {
       manifest[entry] = {
-        recipe: hasRecipe ? "character" : "default",
+        recipe: hasOnlyFullBodyExpressions ? "fullbody" : hasRecipe ? "character" : "default",
         layers,
         outfits,
         expressions

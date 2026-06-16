@@ -11,6 +11,7 @@
     "spriteAnimations": "sprite-animations.js",
     "spriteManifest": "sprite-manifest.json",
     "scenes": [
+      "scenes/scene-alex-branch-test.js",
       "scenes/scene-phone-tour.js",
       "scenes/starter-scene.js"
     ],
@@ -20,8 +21,8 @@
   "files": {
     "asset-suggestions.json": {
       "kind": "file",
-      "size": 814,
-      "mtime": 1780946826492
+      "size": 1176,
+      "mtime": 1781535249806
     },
     "assets/img/phone_tour/tour_gallery_group.png": {
       "kind": "image",
@@ -53,6 +54,71 @@
       "size": 1899476,
       "mtime": 1780882963300
     },
+    "assets/img/phone_tour/tour_stream_preview_video.mp4": {
+      "kind": "video",
+      "size": 1373661,
+      "mtime": 1781470365627
+    },
+    "assets/sprites/alex/emotions/clasped_hands_smile.png": {
+      "kind": "sprite",
+      "size": 187287,
+      "mtime": 1781472696144
+    },
+    "assets/sprites/alex/emotions/crossed_arms.png": {
+      "kind": "sprite",
+      "size": 187012,
+      "mtime": 1781472695977
+    },
+    "assets/sprites/alex/emotions/hands_behind_back.png": {
+      "kind": "sprite",
+      "size": 183561,
+      "mtime": 1781472830481
+    },
+    "assets/sprites/alex/emotions/hand_on_cheek.png": {
+      "kind": "sprite",
+      "size": 187943,
+      "mtime": 1781472696221
+    },
+    "assets/sprites/alex/emotions/peace_sign.png": {
+      "kind": "sprite",
+      "size": 189468,
+      "mtime": 1781472695642
+    },
+    "assets/sprites/alex/emotions/puzzled.png": {
+      "kind": "sprite",
+      "size": 179731,
+      "mtime": 1781472782840
+    },
+    "assets/sprites/alex/emotions/questioning.png": {
+      "kind": "sprite",
+      "size": 182504,
+      "mtime": 1781472813242
+    },
+    "assets/sprites/alex/emotions/smile.png": {
+      "kind": "sprite",
+      "size": 184067,
+      "mtime": 1781472767442
+    },
+    "assets/sprites/alex/emotions/smile_bent_arm.png": {
+      "kind": "sprite",
+      "size": 188867,
+      "mtime": 1781472695884
+    },
+    "assets/sprites/alex/emotions/thinking.png": {
+      "kind": "sprite",
+      "size": 184244,
+      "mtime": 1781472696051
+    },
+    "assets/sprites/alex/emotions/wave.png": {
+      "kind": "sprite",
+      "size": 185756,
+      "mtime": 1781472799822
+    },
+    "assets/sprites/alex/emotions/wink.png": {
+      "kind": "sprite",
+      "size": 183971,
+      "mtime": 1781472695773
+    },
     "characters.js": {
       "kind": "characters",
       "size": 573,
@@ -61,20 +127,26 @@
     },
     "game.config.js": {
       "kind": "config",
-      "size": 1589,
-      "mtime": 1780946194224,
-      "sha256": "ff1cd7bc5ffbde31c6b787ec49ba1f976a1e4b230cf5cb998fa23e59e3776318"
+      "size": 1940,
+      "mtime": 1781144888068,
+      "sha256": "8357e324d4804f9f743c567bf48e8681243887b8e8b3b684742985da607a7de0"
     },
     "README.md": {
       "kind": "file",
       "size": 1063,
       "mtime": 1780940356929
     },
+    "scenes/scene-alex-branch-test.js": {
+      "kind": "scene",
+      "size": 11408,
+      "mtime": 1781475610071,
+      "sha256": "7433ae2f15017c309b64835d7b67fe990ac28ebd6924d11aed1dd12e64aebd2c"
+    },
     "scenes/scene-phone-tour.js": {
       "kind": "scene",
-      "size": 5146,
-      "mtime": 1780946644745,
-      "sha256": "327f3f9c5f4a0263c2a12b2586c33f14c92b06d6a19dbd4b99f0ed627d963c92"
+      "size": 6426,
+      "mtime": 1781474093933,
+      "sha256": "0fc5fd64fbc3ea24dc05331254ebe8d7d378eac0d0c69123f16886d88e0c66c0"
     },
     "scenes/starter-scene.js": {
       "kind": "scene",
@@ -84,20 +156,20 @@
     },
     "sprite-animations.js": {
       "kind": "spriteAnimations",
-      "size": 459,
-      "mtime": 1780860386932,
-      "sha256": "8e5c29383c6d08d9ad901d870a69363d24015ffb5a6d834901c60888e06cd14a"
+      "size": 463,
+      "mtime": 1781140151630,
+      "sha256": "761001c1011191ba15c986d920d5196e18404f57ef7ead6274a65256c55e3e4e"
     },
     "sprite-manifest.json": {
       "kind": "spriteManifest",
-      "size": 3,
-      "mtime": 1780946826481
+      "size": 1199,
+      "mtime": 1781535232932
     },
     "vn.js": {
       "kind": "authorApi",
-      "size": 3237,
-      "mtime": 1780939926616,
-      "sha256": "1dc7966fd654c86cadf2bd9d5db117a4437079454018fb1bfbce1ada2798f11d"
+      "size": 3767,
+      "mtime": 1781470720032,
+      "sha256": "090580beb07862ddab2f004fe5fbc2a83f9d4fc52fee2e288a86bae7efe65db7"
     }
   }
 }

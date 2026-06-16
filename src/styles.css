@@ -37,11 +37,19 @@
   --w-bold: 700;
   --elev-bezel: 0 30px 80px -20px rgba(0, 0, 0, 0.8);
   color: var(--fg);
-  background: #100e16;
+  background: #08080c;
   font-family: var(--font);
   font-synthesis: none;
   letter-spacing: 0;
   text-rendering: optimizeLegibility;
+}
+
+html {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: #08080c;
 }
 
 *,
@@ -52,14 +60,16 @@
 
 body {
   display: flex;
+  width: 100%;
+  height: 100%;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100%;
   align-items: center;
   justify-content: center;
   margin: 0;
   overflow: hidden;
   padding: 16px;
-  background: #100e16;
+  background: #08080c;
   color: var(--fg);
   -webkit-font-smoothing: antialiased;
   -webkit-user-select: none;
@@ -91,7 +101,7 @@ button {
 }
 
 #app {
-  min-height: 100vh;
+  min-height: 100%;
 }
 
 .demo-switcher {
@@ -868,23 +878,31 @@ button {
 body {
   display: grid;
   place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
   padding: 0;
   overflow: hidden;
+  background: #08080c;
 }
 
 #app {
   width: 100%;
-  height: 100vh;
-  min-height: 100vh;
+  height: 100%;
+  min-height: 0;
   display: grid;
   place-items: center;
   overflow: hidden;
+  background: #08080c;
 }
 
 .vn-root {
   position: relative;
   width: 100vw;
   height: 100vh;
+  max-width: 100%;
+  max-height: 100%;
+  container-type: size;
   overflow: hidden;
   background:
     radial-gradient(120% 90% at 50% -10%, rgba(255, 255, 255, 0.035), transparent 60%),
@@ -898,17 +916,24 @@ body {
 }
 
 .game-stage {
+  --stage-pad-top: 22px;
+  --stage-pad-x: 16px;
+  --stage-pad-bottom: 86px;
+
   position: relative;
   display: grid;
   width: 100%;
   height: 100%;
   place-items: center;
-  padding: 22px 16px 86px;
+  padding: var(--stage-pad-top) var(--stage-pad-x) var(--stage-pad-bottom);
 }
 
 .vn-root:has(.phone-app-shell:not([hidden]), .texting-shell:not([hidden])) .game-stage {
+  --stage-pad-top: 18px;
+  --stage-pad-x: 16px;
+  --stage-pad-bottom: 48px;
+
   z-index: 35;
-  padding: 18px 16px 48px;
 }
 
 /* Compositor base: the IRL room image (always-on baseline, the MC's POV). */
@@ -1699,6 +1724,16 @@ body {
   background: color-mix(in oklab, #f472a6 14%, var(--surface-2));
 }
 
+.phone-app-icon--calls .phone-app-icon-glyph {
+  color: #a78bfa;
+  background: color-mix(in oklab, #a78bfa 8%, var(--surface));
+}
+
+.phone-app-icon--calls:hover .phone-app-icon-glyph,
+.phone-app-icon--calls:focus-visible .phone-app-icon-glyph {
+  background: color-mix(in oklab, #a78bfa 14%, var(--surface-2));
+}
+
 .phone-app-icon--browser .phone-app-icon-glyph {
   color: #fb923c;
   background: color-mix(in oklab, #fb923c 8%, var(--surface));
@@ -1740,6 +1775,257 @@ body {
   place-items: center;
   color: rgba(232, 234, 237, 0.55);
   font-size: 14px;
+}
+
+.phone-call-shell {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  place-items: center;
+  padding: clamp(14px, 3%, 26px) clamp(10px, 2%, 18px);
+  pointer-events: none;
+}
+
+.phone-call-frame {
+  height: min(var(--phone-h), 100%);
+  transform: translateY(clamp(-18px, -2vh, -8px));
+}
+
+.phone-call-screen {
+  background:
+    radial-gradient(circle at 50% 20%, rgba(138, 180, 248, 0.14), transparent 26%),
+    linear-gradient(160deg, #151820 0%, #090a0d 58%, #050608 100%);
+}
+
+.phone-call-content {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 28px 24px;
+  text-align: center;
+}
+
+.phone-call-avatar {
+  display: grid;
+  width: clamp(52px, 7vw, 72px);
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid rgba(232, 234, 237, 0.14);
+  border-radius: 50%;
+  color: #f8fafc;
+  background:
+    radial-gradient(circle at 35% 25%, rgba(255, 255, 255, 0.18), transparent 34%),
+    linear-gradient(145deg, #334155, #111827);
+  font-size: clamp(20px, 3vw, 28px);
+  font-weight: 700;
+}
+
+.phone-call-kicker,
+.phone-call-status {
+  margin: 0;
+  color: rgba(232, 234, 237, 0.58);
+  font-size: 12px;
+}
+
+.phone-call-content h1 {
+  margin: 4px 0 0;
+  color: #f8fafc;
+  font-size: clamp(18px, 2.6vw, 25px);
+  font-weight: 650;
+  line-height: 1.1;
+}
+
+.phone-call-nav {
+  pointer-events: none;
+}
+
+.phone-call-wave {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 32px;
+  margin-top: 8px;
+}
+
+.phone-call-wave i {
+  width: 4px;
+  height: var(--wave-height, 14px);
+  border-radius: 999px;
+  background: rgba(138, 180, 248, 0.72);
+}
+
+.phone-call-wave i:nth-child(1) { --wave-height: 12px; }
+.phone-call-wave i:nth-child(2) { --wave-height: 23px; }
+.phone-call-wave i:nth-child(3) { --wave-height: 16px; }
+.phone-call-wave i:nth-child(4) { --wave-height: 28px; }
+.phone-call-wave i:nth-child(5) { --wave-height: 10px; }
+
+.calls-app-root {
+  display: grid;
+  gap: 12px;
+  min-height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.calls-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 12px 12px 0;
+}
+
+.calls-tab {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px;
+  color: rgba(232, 234, 237, 0.62);
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.calls-tab.is-active,
+.calls-tab:hover,
+.calls-tab:focus-visible {
+  color: #f8fafc;
+  background: rgba(232, 234, 237, 0.1);
+}
+
+.calls-panel {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 12px 14px;
+}
+
+.calls-list {
+  display: grid;
+  gap: 4px;
+}
+
+.calls-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 8px;
+  color: #e8eaed;
+  background: transparent;
+  text-align: left;
+}
+
+.calls-row--button {
+  cursor: pointer;
+}
+
+.calls-row--button:hover,
+.calls-row--button:focus-visible {
+  background: rgba(232, 234, 237, 0.08);
+}
+
+.calls-row.is-unread strong::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-left: 7px;
+  border-radius: 50%;
+  background: #ff4f7b;
+}
+
+.calls-avatar {
+  display: grid;
+  width: 38px;
+  aspect-ratio: 1;
+  place-items: center;
+  border-radius: 50%;
+  color: #f8fafc;
+  background: #334155;
+  font-weight: 700;
+}
+
+.calls-avatar--large {
+  width: 72px;
+}
+
+.calls-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.calls-copy strong,
+.voicemail-detail h2 {
+  overflow: hidden;
+  margin: 0;
+  color: #f8fafc;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.calls-copy small,
+.voicemail-detail > p {
+  overflow: hidden;
+  margin: 0;
+  color: rgba(232, 234, 237, 0.58);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.voicemail-detail {
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px 18px;
+  text-align: center;
+}
+
+.voicemail-play {
+  border: 0;
+  border-radius: 8px;
+  padding: 9px 14px;
+  color: #0b1220;
+  background: #a78bfa;
+  font: inherit;
+  cursor: pointer;
+}
+
+.voicemail-transcript {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+  padding-top: 8px;
+  text-align: left;
+}
+
+.voicemail-transcript article {
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(232, 234, 237, 0.08);
+}
+
+.voicemail-transcript strong {
+  display: block;
+  margin-bottom: 4px;
+  color: rgba(232, 234, 237, 0.66);
+  font-size: 11px;
+}
+
+.voicemail-transcript p {
+  margin: 0;
+  color: #f8fafc;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .gallery-app-root {
@@ -2522,17 +2808,17 @@ body {
 .menu-inner {
   position: relative;
   display: flex;
-  width: min(960px, 90vw);
+  width: min(960px, 90cqw);
   margin: 0 auto;
   flex-direction: column;
   gap: 44px;
-  padding: 0 6vw;
+  padding: 0 6cqw;
 }
 
 .menu-brand h1 {
   margin: 0;
   color: var(--fg);
-  font-size: clamp(48px, 9vw, 104px);
+  font-size: clamp(48px, 9cqw, 104px);
   font-weight: 300;
   line-height: 0.95;
   letter-spacing: -0.03em;
@@ -2562,7 +2848,7 @@ body {
   color: var(--fg-muted);
   background: transparent;
   cursor: pointer;
-  font-size: clamp(18px, 2.4vw, 24px);
+  font-size: clamp(18px, 2.4cqw, 24px);
   font-weight: var(--w-medium);
   letter-spacing: 0.01em;
   transition: color 140ms ease, padding 140ms ease;
@@ -3021,15 +3307,15 @@ body {
   height: 100%;
   min-height: 0;
   place-items: center;
-  padding: 16px 22px 58px;
+  padding: 24px 48px 62px;
 }
 
 .stream-site {
   display: grid;
-  width: min(940px, 100%);
-  height: min(520px, 100%);
+  width: min(860px, 100%);
+  height: min(480px, 100%);
   max-height: 100%;
-  min-height: min(360px, 100%);
+  min-height: min(320px, 100%);
   grid-template-rows: auto auto 1fr;
   overflow: hidden;
   border: 1px solid rgba(232, 234, 237, 0.14);
@@ -3162,7 +3448,9 @@ body {
   background: #050507;
 }
 
-.stream-window img {
+.stream-window-media,
+.stream-window img,
+.stream-window video {
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -3424,10 +3712,13 @@ body {
    ========================================================================= */
 
 .irl-shell {
-  position: relative;
+  position: absolute;
+  inset:
+    calc(-1 * var(--stage-pad-top, 0px))
+    0
+    0
+    calc(-1 * var(--stage-pad-x, 0px));
   z-index: 2;
-  width: 100%;
-  height: 100%;
 }
 
 .irl-stage {
@@ -3439,21 +3730,27 @@ body {
 .irl-character-layer {
   position: absolute;
   inset: 0;
+  z-index: 20;
 }
 
 .irl-image-layer {
   position: absolute;
   inset: 0;
-  z-index: 1;
   pointer-events: none;
 }
+
+.irl-media-layer--behind { z-index: 10; }
+.irl-media-layer--front { z-index: 30; }
+.irl-media-layer--cg { z-index: 40; }
+.irl-media-layer--overlay { z-index: 50; }
 
 .irl-image {
   position: absolute;
   left: var(--image-x, 50%);
   top: var(--image-y, 50%);
   z-index: var(--image-z, 45);
-  width: min(72vw, 760px);
+  width: var(--image-width, min(72vw, 760px));
+  height: var(--image-height, auto);
   max-width: 96%;
   max-height: 92%;
   opacity: var(--image-alpha, 1);
@@ -3468,7 +3765,10 @@ body {
 
 .irl-image[data-kind="cg"] {
   inset: 0;
+  left: 0;
+  top: 0;
   width: 100%;
+  height: 100%;
   max-width: none;
   max-height: none;
   transform: scale(var(--image-scale, 1));
@@ -3482,9 +3782,10 @@ body {
 .irl-image-media {
   display: block;
   width: 100%;
-  height: auto;
+  height: 100%;
   max-height: 92vh;
   object-fit: var(--image-fit, contain);
+  object-position: var(--image-position, center);
 }
 
 .irl-image[data-kind="cg"] .irl-image-media {

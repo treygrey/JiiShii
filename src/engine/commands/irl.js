@@ -282,6 +282,57 @@ export function clearImage(id, options = {}) {
 }
 
 /**
+ * Shows or updates an advanced IRL media displayable.
+ *
+ * @param {string} id - Stable displayable id.
+ * @param {object} options - Media options including kind and asset.
+ * @returns {object} Show-media command.
+ */
+export function media(id, options = {}) {
+  return {
+    ...options,
+    type: "showIrlImage",
+    id,
+    kind: options.kind ?? "image"
+  };
+}
+
+/**
+ * Moves or restages an advanced IRL media displayable.
+ *
+ * @param {string} id - Stable displayable id.
+ * @param {object|string} placement - Position preset or transform fields.
+ * @param {object} [options] - Additional transform or timing fields.
+ * @returns {object} Move-media command.
+ */
+export function moveMedia(id, placement, options = {}) {
+  const placementOptions = typeof placement === "string" ? { at: placement } : { ...(placement ?? {}) };
+  return {
+    ...placementOptions,
+    ...options,
+    type: "moveIrlImage",
+    id,
+    kind: "media"
+  };
+}
+
+/**
+ * Clears an advanced IRL media displayable.
+ *
+ * @param {string} id - Stable displayable id.
+ * @param {object} [options] - Clear options, e.g. { transition, duration }.
+ * @returns {object} Clear-media command.
+ */
+export function clearMedia(id, options = {}) {
+  return {
+    ...options,
+    type: "clearIrlImage",
+    id,
+    kind: "media"
+  };
+}
+
+/**
  * The one verb for someone speaking. The active stage decides how it looks:
  * a bubble on texting, a dialogue-box line on IRL/streaming.
  *
@@ -393,6 +444,12 @@ export function video(id, options = {}) {
     id,
     skippable: loop ? true : options.skippable !== false,
     volume: Number.isFinite(options.volume) ? Math.min(1, Math.max(0, options.volume)) : 1,
-    loop
+    loop,
+    mode: options.mode ?? (loop ? "loop" : "hold"),
+    startAt: options.startAt ?? null,
+    endAt: options.endAt ?? null,
+    fit: options.fit ?? "cover",
+    position: options.position ?? "center",
+    muted: options.muted === true
   };
 }

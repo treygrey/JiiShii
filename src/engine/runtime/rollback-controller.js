@@ -250,6 +250,16 @@ export function replaySceneContextToCurrentCommand(runner) {
         break;
       case "narration":
         setSpriteFocus(runner.state.sprites, null);
+        if (runner.state.currentSurface === "phone_call") {
+          appendPhoneCallTranscript(runner.state.visuals, {
+            kind: "narration",
+            message: command.message
+          });
+          runner.activeRenderer.renderPhoneCallState?.(runner.state.visuals.phoneCall, {
+            characters: runner.characters,
+            phone: runner.state.visuals.phone
+          });
+        }
         runner.state.currentCommandIndex += 1;
         break;
       case "textBlock": {
@@ -266,9 +276,15 @@ export function replaySceneContextToCurrentCommand(runner) {
         setBackgroundState(runner.state.visuals, {
           id: command.id,
           transition: command.transition,
-          duration: command.duration
+          duration: command.duration,
+          fit: command.fit,
+          position: command.position
         });
-        runner.onBackground(command.id, { transition: "cut" });
+        runner.onBackground(command.id, {
+          transition: "cut",
+          fit: command.fit,
+          position: command.position
+        });
         runner.state.currentCommandIndex += 1;
         break;
       case "music":
@@ -319,6 +335,19 @@ export function replaySceneContextToCurrentCommand(runner) {
         runner.activeRenderer.renderStreamImageInstant(command);
         runner.state.currentCommandIndex += 1;
         break;
+      case "streamVideo":
+        setStreamWindowState(runner.state.visuals, {
+          state: "live",
+          media: {
+            ...command,
+            kind: "video",
+            asset: command.video,
+            endImage: command.image
+          }
+        });
+        runner.activeRenderer.renderStreamVideoInstant?.(command);
+        runner.state.currentCommandIndex += 1;
+        break;
       case "streamChatBlock":
         appendStreamChat(runner.state.visuals, command.messages ?? []);
         runner.activeRenderer.renderStreamChatBlockInstant(command);
@@ -330,11 +359,24 @@ export function replaySceneContextToCurrentCommand(runner) {
         break;
       case "dialogue": {
         const speaker = runner.characters.get(command.id) ?? { id: command.id, name: command.id };
-        if (runner.state.currentSurface === "irl") {
+        if (runner.state.currentSurface === "phone_call") {
+          appendPhoneCallTranscript(runner.state.visuals, {
+            id: command.id,
+            name: speaker.name ?? command.id,
+            side: speaker.side ?? "left",
+            message: command.message
+          });
+          runner.activeRenderer.renderPhoneCallState?.(runner.state.visuals.phoneCall, {
+            characters: runner.characters,
+            phone: runner.state.visuals.phone
+          });
+        } else if (runner.state.currentSurface === "irl") {
           setSpriteFocus(runner.state.sprites, command.id);
           runner.syncIrlSprites({ instant: true });
+          runner.compositor.renderDialogueInstant(command.message, speaker);
+        } else {
+          runner.compositor.renderDialogueInstant(command.message, speaker);
         }
-        runner.compositor.renderDialogueInstant(command.message, speaker);
         runner.state.currentCommandIndex += 1;
         break;
       }
@@ -428,6 +470,7 @@ import { cloneHistoryState } from "../state/history-state.js";
 import { setSpriteFocus } from "../state/sprite-state.js";
 import { cloneSurfaceState, createSurfaceState } from "../surfaces/index.js";
 import {
+  appendPhoneCallTranscript,
   appendStreamChat,
   appendTextMessages,
   setBackgroundState,

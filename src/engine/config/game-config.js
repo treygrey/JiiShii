@@ -16,8 +16,8 @@ export const DEFAULT_GAME_CONFIG = {
   phone: {
     enabled: true,
     button: true,
-    apps: ["texting", "gallery", "social"],
-    homeAppOrder: ["texting", "gallery", "social"],
+    apps: ["texting", "calls", "gallery", "social"],
+    homeAppOrder: ["texting", "calls", "gallery", "social"],
     defaultWallpaper: null
   },
   shell: {

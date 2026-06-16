@@ -1,1 +1,41 @@
-{}
+{
+  "alex": {
+    "recipe": "fullbody",
+    "layers": {
+      "heads": {},
+      "bodies": {},
+      "outfits": {},
+      "emotions": {
+        "clasped_hands_smile": "clasped_hands_smile.png",
+        "crossed_arms": "crossed_arms.png",
+        "hands_behind_back": "hands_behind_back.png",
+        "hand_on_cheek": "hand_on_cheek.png",
+        "peace_sign": "peace_sign.png",
+        "puzzled": "puzzled.png",
+        "questioning": "questioning.png",
+        "smile": "smile.png",
+        "smile_bent_arm": "smile_bent_arm.png",
+        "thinking": "thinking.png",
+        "wave": "wave.png",
+        "wink": "wink.png"
+      },
+      "overlays": {},
+      "foreground": {}
+    },
+    "outfits": {},
+    "expressions": {
+      "clasped_hands_smile": "clasped_hands_smile.png",
+      "crossed_arms": "crossed_arms.png",
+      "hands_behind_back": "hands_behind_back.png",
+      "hand_on_cheek": "hand_on_cheek.png",
+      "peace_sign": "peace_sign.png",
+      "puzzled": "puzzled.png",
+      "questioning": "questioning.png",
+      "smile": "smile.png",
+      "smile_bent_arm": "smile_bent_arm.png",
+      "thinking": "thinking.png",
+      "wave": "wave.png",
+      "wink": "wink.png"
+    }
+  }
+}

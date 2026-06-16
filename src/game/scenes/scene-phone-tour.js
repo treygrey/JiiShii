@@ -1,7 +1,10 @@
 import {
   background,
+  call,
   character,
   choice,
+  endCall,
+  transition,
   mark,
   narrate,
   phoneApps,
@@ -19,7 +22,8 @@ import {
   streamChatBlock,
   streamLayout,
   streamTitle,
-  streamWindow,
+  streamVideo,
+  voicemail,
 } from "../vn.js";
 
 export default scene({
@@ -35,7 +39,7 @@ export default scene({
     stage("irl"),
     background("tour_room_day"),
     phoneButton(true),
-    phoneApps(["texting", "gallery", "social"]),
+    phoneApps(["texting", "calls", "gallery", "social"]),
     saveGalleryImage("tour_selfie", "tour_gallery_selfie", {
       caption: "A saved photo from a message thread.",
       tags: ["Friends", "Tour"],
@@ -69,6 +73,10 @@ export default scene({
       likes: 9,
       views: 74,
     }),
+    voicemail("tour_voicemail", "guide", {
+      text: "This is a saved voicemail. It lives in the Calls app, but it is not driving the story.",
+      notify: true,
+    }),
     narrate("The phone icon is live now. This little tour is going to make the phone prove it can behave like a real surface without stealing the whole scene."),
     say("guide", "First stop: gallery. I saved a few images for you."),
     say("guide", "Open the phone, go to Gallery, look at the photos, and try setting the wallpaper image as your phone background."),
@@ -99,7 +107,32 @@ export default scene({
     choice({
       prompt: "Post image checkpoint",
       options: [
-        { text: "The post image opened full-size.", goto: "stream_tour" },
+        { text: "The post image opened full-size.", goto: "call_tour" },
+      ],
+    }),
+
+    mark("call_tour"),
+    stage("phone_call"),
+    call("guide", { title: "Connected" }),
+    say("guide", "This is a phone call. It looks like the phone, but it is story-first and modal."),
+    say("guide", "The Home button is disabled because calls are time-sensitive. The author ends the call when the story is ready."),
+    choice({
+      prompt: "Call checkpoint",
+      options: [
+        { text: "Stay on the call.", goto: "call_end" },
+      ],
+    }),
+
+    mark("call_end"),
+    endCall(),
+    stage("irl"),
+    background("tour_room_day"),
+    say("guide", "The call is over. Now the Calls app should show a recent call and a voicemail."),
+    say("guide", "Open Calls, check Recents and Voicemail, then come back."),
+    choice({
+      prompt: "Calls app checkpoint",
+      options: [
+        { text: "Calls and voicemail worked.", goto: "stream_tour" },
       ],
     }),
 
@@ -107,7 +140,12 @@ export default scene({
     stage("streaming"),
     streamTitle("stream.local/channel"),
     streamLayout("channel"),
-    streamWindow("live", "tour_stream_preview"),
+    streamVideo("tour_stream_preview_video", {
+      mode: "replace",
+      image: "tour_stream_preview",
+      fit: "cover",
+      muted: true,
+    }),
     streamChatBlock("tour_chat", [
       streamChat("pixelrat", "is this the phone build?"),
       streamChat("softserve", "gallery works now?"),
@@ -139,5 +177,6 @@ export default scene({
     background("tour_room_day"),
     say("critic", "That is the shape of it: home screen, gallery, social, stream overlay, and story texting without the phone eating the script."),
     narrate("Phone surface tour complete."),
+    transition("Run Alex branch test", "scene-alex-branch-test"),
   ],
 });

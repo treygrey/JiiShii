@@ -1,4 +1,5 @@
 import { GALLERY_SURFACE } from "../../engine/surfaces/index.js";
+import { escapeAttr, escapeHtml } from "../html.js";
 import { PhoneShell, stopPhoneStoryAdvance } from "./phone-shell.js";
 
 /**
@@ -42,7 +43,6 @@ export class GalleryRenderer {
   mount() {
     this.shell.mount({ className: "gallery-phone-shell", title: "Gallery", subtitle: "Saved images" });
     this.surface = this.shell.surface;
-    this.bindHomeChrome();
   }
 
   /**
@@ -60,26 +60,6 @@ export class GalleryRenderer {
   showTransition() {}
   showChoice() {}
   showEnd() {}
-
-  /**
-   * Routes shared phone Home chrome through the renderer-owned runner handle.
-   *
-   * @returns {void}
-   */
-  bindHomeChrome() {
-    for (const button of this.surface?.querySelectorAll("[data-phone-nav='home']") ?? []) {
-      button.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (this.runner?.state?.visuals?.phone?.isButtonEnabled === false) {
-          return;
-        }
-        this.runner?.openPhoneApp?.("home");
-      });
-      button.addEventListener("pointerup", (event) => {
-        event.stopPropagation();
-      });
-    }
-  }
 
   /**
    * Shows a shared in-phone notification toast.
@@ -178,7 +158,7 @@ export class GalleryRenderer {
       const taggedImages = images.filter((image) => (image.tags ?? []).includes(this.activeTag));
       return `
         <div class="gallery-tag-view">
-          <h2>${this.activeTag}</h2>
+          <h2>${escapeHtml(this.activeTag)}</h2>
           ${this.renderImageGrid(taggedImages)}
         </div>
       `;
@@ -186,12 +166,12 @@ export class GalleryRenderer {
     return `
       <div class="gallery-tag-list">
         ${tags.map((tag) => `
-          <button class="gallery-tag-card" type="button" data-gallery-tag="${tag.name}">
+          <button class="gallery-tag-card" type="button" data-gallery-tag="${escapeAttr(tag.name)}">
             <span class="gallery-tag-stack" aria-hidden="true">
               ${tag.previews.map((image, index) => this.renderTagPreview(image, index)).join("")}
             </span>
             <span class="gallery-tag-copy">
-              <strong>${tag.name}</strong>
+              <strong>${escapeHtml(tag.name)}</strong>
               <span>${tag.count} ${tag.count === 1 ? "pic" : "pics"}</span>
             </span>
           </button>
@@ -292,8 +272,8 @@ export class GalleryRenderer {
   renderImage(image) {
     const src = this.resolveImage(image.image);
     return `
-      <button class="gallery-thumb" type="button" data-gallery-image="${image.id}">
-        ${src ? `<img src="${src}" alt="">` : `<span>${image.image}</span>`}
+      <button class="gallery-thumb" type="button" data-gallery-image="${escapeAttr(image.id)}">
+        ${src ? `<img src="${escapeAttr(src)}" alt="">` : `<span>${escapeHtml(image.image)}</span>`}
       </button>
     `;
   }
@@ -308,7 +288,7 @@ export class GalleryRenderer {
   renderTagPreview(image, index) {
     const src = this.resolveImage(image.image);
     return src
-      ? `<img class="gallery-tag-preview gallery-tag-preview--${index}" src="${src}" alt="">`
+      ? `<img class="gallery-tag-preview gallery-tag-preview--${index}" src="${escapeAttr(src)}" alt="">`
       : `<span class="gallery-tag-preview gallery-tag-preview--${index}"></span>`;
   }
 
@@ -330,7 +310,7 @@ export class GalleryRenderer {
     this.setHeaderAction(image);
     this.shell.content.innerHTML = `
       <div class="gallery-detail">
-        ${src ? `<img src="${src}" alt="">` : `<div class="phone-empty-state">${image.image}</div>`}
+        ${src ? `<img src="${escapeAttr(src)}" alt="">` : `<div class="phone-empty-state">${escapeHtml(image.image)}</div>`}
       </div>
     `;
   }

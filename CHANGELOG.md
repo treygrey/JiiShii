@@ -17,10 +17,15 @@ All notable changes to JiiShii will be documented here.
 - Block-style `condition()` branches with `if`, `then`, `elseIf`, and `else` command arrays.
 - Structured condition predicates with `any`, `all`, and `not`, while keeping JavaScript predicate functions as an escape hatch.
 - Browser-level smoke tests for the guided phone tour, including phone navigation, gallery wallpaper, social interactions, and texting choice preservation.
+- Browser regression coverage for authored-frame layout, title menu containment, phone/stream 16:9 sizing, skip modes, seen choices, Extras interaction, save/load, keyboard shortcuts, and streaming rollback chat projection.
 - Build-time asset suggestion generation for discovered game assets.
 - Game package guide covering clean engine/game separation and package layout.
 - Tauri desktop wrapper trial for packaging the guided tour as a native app shell without changing the web-first game package.
 - Loose desktop game package mode with `game.manifest.json`, sibling `game/` discovery, scoped `jiishii-game://` asset/module loading, and dev-mode manifest rebuilding.
+- Modal `phone_call` story surface with Android-style call UI, transcript/caption presentation for normal `say()`/`narrate()`/`choice()` beats, disabled hang-up by default, and phone navigation blocked while a call is active.
+- Calls phone app with Recents and Voicemail tabs, automatic recent-call logging with per-call opt-out, voicemail authoring via `voicemail()`, and optional voicemail audio playback through the existing voice channel.
+- Unified media displayable helpers for authored images and video, including advanced `media()`, `moveMedia()`, and `clearMedia()` commands for IRL-stage overlays.
+- `streamVideo()` command for videos inside the streaming surface, with replace, hold, and loop modes plus millisecond start/end crop controls.
 
 ### Changed
 
@@ -29,6 +34,11 @@ All notable changes to JiiShii will be documented here.
 - Changed the author-facing `vn.js` package shim to load from the injected author API so the same scene imports work in bundled and loose package modes.
 - Expanded `condition()` documentation to explain block branches, structured predicates, legacy mark/scene routing, and author-facing comparison rules.
 - Strengthened phone, gallery, social, and asset validation messages with suggestions where possible.
+- Added author-controlled display constraints with a fixed authored-frame aspect ratio, configurable narration line width, font scaling, and reduced-motion presentation settings.
+- Reworked the shell, title menu, phone surfaces, and streaming surface to size from the authored frame instead of the browser viewport.
+- Expanded the guided phone tour to cover modal phone calls, recent calls, and voicemail alongside Gallery, Social, Streaming, and Messages.
+- Moved backgrounds, IRL image/CG displayables, full-screen video, and streaming media toward a shared normalized media model while preserving the simple author-facing wrappers.
+- Expanded background, image, CG, video, and stream media controls with fit, position, layer, width/height, alpha, timing, and video playback fields where appropriate.
 
 ### Fixed
 
@@ -36,6 +46,10 @@ All notable changes to JiiShii will be documented here.
 - Preserved phone wallpaper, gallery entries, social follows/posts, and phone display state through save/load paths.
 - Kept phone app overlays above active IRL choices so phone navigation does not strand UI underneath decision prompts.
 - Guarded phone/social scrolling and phone chrome controls so they do not trigger story rollback or advancement.
+- Fixed title menu layout so it stays inside the configured authored frame and no longer exposes an old gray/purple document background sliver around the frame.
+- Fixed phone Home sizing in 16:9 windows so the phone keeps its aspect ratio, stays on-screen, and its app labels do not collide when the frame is short.
+- Fixed stream surface sizing so the browser-like stream panel stays inside the authored frame and clear of the quick menu.
+- Fixed streaming rollback projection so in-flight chat reveal timers are cancelled before state projection, preventing duplicate chat rows after rolling back into a stream beat.
 
 ## 0.1.0-alpha.0 - 2026-06-07
 

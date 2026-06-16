@@ -38,6 +38,7 @@ function validRenderers() {
     streaming: renderer("streaming", [
       "streamLayout",
       "streamImage",
+      "streamVideo",
       "streamChatBlock",
       "streamNarration",
       "streamTitle",
@@ -49,7 +50,9 @@ function validRenderers() {
     ], ["renderStreamingState"]),
     phone_home: renderer("phone_home", ["choice", "transition"], ["renderPhoneHomeState"]),
     gallery: renderer("gallery", ["choice", "transition"], ["renderGalleryState"]),
-    social: renderer("social", ["choice", "transition"], ["renderSocialState"])
+    social: renderer("social", ["choice", "transition"], ["renderSocialState"]),
+    phone_call: renderer("phone_call", ["call", "endCall", "choice", "transition"], ["renderPhoneCallState"]),
+    calls: renderer("calls", ["choice", "transition"], ["renderCallsState"])
   };
 }
 

@@ -14,6 +14,9 @@ import {
   setWallpaper,
   saveGalleryImage,
   removeGalleryImage,
+  call,
+  endCall,
+  voicemail,
   socialPost,
   socialFollow,
   socialLike
@@ -28,8 +31,8 @@ Set the default phone shape in `src/game/game.config.js`:
 phone: {
   enabled: true,
   button: true,
-  apps: ["texting", "gallery", "social"],
-  homeAppOrder: ["texting", "gallery", "social"],
+  apps: ["texting", "calls", "gallery", "social"],
+  homeAppOrder: ["texting", "calls", "gallery", "social"],
   defaultWallpaper: null
 }
 ```
@@ -54,7 +57,7 @@ phoneButton(true);  // show it again
 `phoneApps(...)` replaces the installed app list until rollback/load/replay changes it again:
 
 ```js
-phoneApps(["texting", "gallery", "social"]);
+phoneApps(["texting", "calls", "gallery", "social"]);
 openPhone("home");
 ```
 
@@ -90,6 +93,47 @@ Phone controls have fixed jobs:
 | App controls, phone chrome, gallery/social buttons | Do not advance the story |
 
 Closing the phone returns to the current story surface: IRL returns to IRL, streaming returns to streaming, and texting returns to the active story thread.
+
+## Story Phone Calls vs Calls App
+
+Phone calls also have two roles:
+
+- `stage("phone_call")` is a story surface. It looks like the phone, but it is modal and time-sensitive.
+- Opening `calls` from the phone Home screen is the Calls app. It shows Recents and Voicemail, but it does not advance the story.
+
+Active calls block phone navigation. The floating phone button, Android Home, and Android Back do not open other apps while `call(...)` is active. The author ends the call with `endCall(...)`.
+
+```js
+stage("phone_call");
+call("alex", { title: "Connected" });
+say("alex", "Are you there?");
+say("me", "I'm here.");
+endCall();
+```
+
+`canHangUp` defaults to `false`. The red hang-up control is visible but disabled, because hanging up is almost always a story decision. Only enable it when the branch is authored.
+
+```js
+call("alex", { canHangUp: true });
+```
+
+Calls auto-record to the Calls app by default. Use `log: false` for calls that should not appear in Recents:
+
+```js
+call("unknown", { title: "Unknown caller", log: false });
+```
+
+Voicemail lives in the Calls app and behaves like a saved phone-call-style message:
+
+```js
+voicemail("alex_vm_01", "alex", {
+  text: "Call me when you get this.",
+  audio: "alex_voicemail_01",
+  notify: true
+});
+```
+
+Audio is optional. If `audio` is present, the voicemail detail can play it through the existing voice channel. The transcript/text is still the source of truth for rollback and save/load.
 
 ## Notifications
 
@@ -205,6 +249,8 @@ Phone state follows normal visual rollback unless a feature is explicitly player
 | Gallery image with `persistent: true` | No |
 | Social post | Yes, by default |
 | Social post with `persistent: true` | No |
+| Recent call | Yes |
+| Voicemail | Yes |
 | Wallpaper | No |
 | Likes/follows with flags | Same as the story variable they set |
 | Notifications | Yes, with visual state |
@@ -312,7 +358,7 @@ export const rendererConstructors = {
 Then enable and open it from script:
 
 ```js
-phoneApps(["texting", "gallery", "social", "pinball"]);
+phoneApps(["texting", "calls", "gallery", "social", "pinball"]);
 openPhone("pinball");
 ```
 
@@ -341,6 +387,8 @@ For more complete examples, copy `templates/game-package/surface-modules/gallery
 - opening the phone from story
 - saving gallery images
 - setting wallpaper
+- making a modal story phone call
+- checking recent calls and voicemail
 - following a social account
 - opening a social post image
 - using the phone over a streaming surface

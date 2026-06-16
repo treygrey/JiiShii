@@ -70,6 +70,14 @@ const PRESETS = {
       streaming: 2
     }
   },
+  // Authored phone calls are story surfaces. The phone prop sits over the IRL
+  // room, while dialogue and choices continue using the shared compositor UI.
+  phone_call: {
+    zOrder: {
+      background: 0,
+      phone_call: 2
+    }
+  },
   // Texting popped over an active stream — the key preset. The stream stays
   // mounted at z:1, the blur moves in front of it at z:2, and the phone
   // sits on top of the blur at z:3.
@@ -312,6 +320,7 @@ export class LayerCompositor {
     // Single surface
     if (top === "streaming") return "streaming";
     if (top === "texting") return "texting";
+    if (top === "phone_call") return "phone_call";
     if (top === "phone_home") return "phone_home";
     if (top === "gallery") return "gallery";
     if (top === "social") return "social";
@@ -647,8 +656,11 @@ export class LayerCompositor {
     video.autoplay = true;
     video.playsInline = true;
     video.loop = command.loop === true;
+    video.muted = command.muted === true;
     const settings = this.getSettings();
     video.volume = Math.min(1, Math.max(0, (command.volume ?? 1) * (settings.masterVolume ?? 1)));
+    video.style.objectFit = command.fit ?? "cover";
+    video.style.objectPosition = command.position ?? "center";
     layer.append(video);
 
     let done = false;
@@ -671,6 +683,16 @@ export class LayerCompositor {
     };
 
     video.addEventListener("ended", finish);
+    video.addEventListener("loadedmetadata", () => {
+      if (Number.isFinite(command.startAt)) {
+        video.currentTime = command.startAt / 1000;
+      }
+    }, { once: true });
+    video.addEventListener("timeupdate", () => {
+      if (Number.isFinite(command.endAt) && video.currentTime >= command.endAt / 1000) {
+        finish();
+      }
+    });
     video.addEventListener("error", () => {
       console.warn(`JiiShii: video "${command.id}" failed to play; skipping cutscene.`);
       finish();

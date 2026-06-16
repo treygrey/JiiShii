@@ -219,7 +219,7 @@ describe("sprite state helpers", () => {
         kind: "image",
         at: "center",
         scale: 0.72,
-        layer: "foreground",
+        layer: "front",
         fit: "contain"
       })
     ]);

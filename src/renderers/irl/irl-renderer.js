@@ -31,16 +31,18 @@ export class IrlRenderer {
    * @param {Element} appRoot - The shared game stage.
    * @param {object} [options] - Renderer services.
    */
-  constructor(appRoot, { getSettings, onLog, resolveImage, resolveSprite, resolveExpression } = {}) {
+  constructor(appRoot, { getSettings, onLog, resolveImage, resolveVideo, resolveSprite, resolveExpression } = {}) {
     this.appRoot = appRoot;
     this.getSettings = getSettings ?? (() => ({ textSpeed: 0.6 }));
     this.onLog = onLog ?? (() => {});
     this.resolveImage = resolveImage ?? (() => null);
+    this.resolveVideo = resolveVideo ?? (() => null);
     this.resolveSprite = resolveSprite ?? (() => ({ layers: [] }));
     this.resolveExpression = resolveExpression ?? (() => null);
     this.runner = null;
     this.surface = null;
     this.imageLayer = null;
+    this.mediaLayers = {};
     this.characterLayer = null;
     this.choiceOverlay = null;
     /** @type {Map<string, object>} id -> current projected image state. */
@@ -78,12 +80,18 @@ export class IrlRenderer {
     this.surface.className = "irl-shell";
     this.surface.innerHTML = `
       <div class="irl-stage">
-        <div class="irl-image-layer"></div>
+        <div class="irl-image-layer irl-media-layer irl-media-layer--behind" data-media-layer="behind"></div>
         <div class="irl-character-layer"></div>
+        <div class="irl-image-layer irl-media-layer irl-media-layer--front" data-media-layer="front"></div>
+        <div class="irl-image-layer irl-media-layer--cg" data-media-layer="cg"></div>
+        <div class="irl-image-layer irl-media-layer--overlay" data-media-layer="overlay"></div>
       </div>
     `;
     this.appRoot.append(this.surface);
-    this.imageLayer = this.surface.querySelector(".irl-image-layer");
+    this.mediaLayers = Object.fromEntries(
+      [...this.surface.querySelectorAll("[data-media-layer]")].map((layer) => [layer.dataset.mediaLayer, layer])
+    );
+    this.imageLayer = this.mediaLayers.front;
     this.characterLayer = this.surface.querySelector(".irl-character-layer");
   }
 
@@ -98,6 +106,7 @@ export class IrlRenderer {
     this.choiceOverlay?.remove();
     this.surface = null;
     this.imageLayer = null;
+    this.mediaLayers = {};
     this.characterLayer = null;
     this.choiceOverlay = null;
   }
@@ -111,8 +120,8 @@ export class IrlRenderer {
     this.images.clear();
     this.sprites.clear();
     this.clearExitTimers();
-    if (this.imageLayer) {
-      this.imageLayer.innerHTML = "";
+    for (const layer of Object.values(this.mediaLayers)) {
+      layer.innerHTML = "";
     }
     if (this.characterLayer) {
       this.characterLayer.innerHTML = "";
@@ -284,33 +293,97 @@ export class IrlRenderer {
    * @returns {void}
    */
   _renderImage(image, { instant = false } = {}) {
-    if (!this.imageLayer) {
+    const mediaLayer = this._mediaLayerFor(image);
+    if (!mediaLayer) {
       return;
     }
 
     this.images.set(image.id, { ...image });
     this.clearImageExitTimer(image.id);
-    let element = this.imageLayer.querySelector(`[data-image-id="${image.id}"]`);
+    let element = this.surface.querySelector(`[data-image-id="${image.id}"]`);
     const isNewElement = !element;
     if (!element) {
       element = document.createElement("div");
       element.className = "irl-image";
       element.dataset.imageId = image.id;
-      this.imageLayer.append(element);
+    }
+    if (element.parentElement !== mediaLayer) {
+      mediaLayer.append(element);
     }
 
     element.classList.remove("is-leaving");
     element.dataset.kind = image.kind ?? "image";
+    element.dataset.mediaKind = image.kind === "video" ? "video" : "image";
     element.dataset.fit = image.fit ?? "contain";
     element.style.setProperty("--image-fit", image.fit ?? (image.kind === "cg" ? "cover" : "contain"));
+    element.style.setProperty("--image-position", image.position ?? "center");
     this._applyImageTransform(element, image, { instant, isNewElement });
 
-    const url = this.resolveImage(image.asset);
+    const url = image.kind === "video" ? this.resolveVideo(image.asset) : this.resolveImage(image.asset);
     if (url) {
-      element.innerHTML = `<img class="irl-image-media" src="${url}" alt="" />`;
+      this._renderMediaElement(element, image, url);
     } else {
       element.innerHTML = `<div class="irl-image-placeholder">${image.asset}</div>`;
     }
+  }
+
+  /**
+   * Gets the DOM layer that should contain an IRL media displayable.
+   *
+   * @private
+   * @param {object} image - Media projection.
+   * @returns {HTMLElement|null} DOM layer.
+   */
+  _mediaLayerFor(image = {}) {
+    const layer = image.kind === "cg" ? "cg" : image.layer ?? "front";
+    return this.mediaLayers[layer] ?? this.mediaLayers.front ?? null;
+  }
+
+  /**
+   * Renders an image or video tag inside an IRL media container.
+   *
+   * @private
+   * @param {HTMLElement} element - Media container.
+   * @param {object} image - Media projection.
+   * @param {string} url - Resolved asset URL.
+   * @returns {void}
+   */
+  _renderMediaElement(element, image, url) {
+    if (image.kind !== "video") {
+      element.innerHTML = `<img class="irl-image-media" src="${url}" alt="" />`;
+      return;
+    }
+    let video = element.querySelector("video");
+    if (!video) {
+      element.innerHTML = "";
+      video = document.createElement("video");
+      video.className = "irl-image-media";
+      video.playsInline = true;
+      element.append(video);
+    }
+    if (video.dataset.src !== url) {
+      video.dataset.src = url;
+      video.src = url;
+    }
+    video.loop = image.loop === true;
+    video.muted = image.muted === true;
+    video.volume = Math.min(1, Math.max(0, image.volume ?? 1));
+    if (Number.isFinite(image.startAt)) {
+      video.currentTime = image.startAt / 1000;
+    }
+    if (Number.isFinite(image.endAt)) {
+      video.ontimeupdate = () => {
+        if (!video.loop && video.currentTime >= image.endAt / 1000) {
+          video.pause();
+        }
+      };
+    } else {
+      video.ontimeupdate = null;
+    }
+    video.play?.()?.catch?.(() => {
+      video.muted = true;
+      video.play?.();
+    });
   }
 
   /**
@@ -356,10 +429,20 @@ export class IrlRenderer {
     const { x, y, scale, alpha, z, layer } = placement;
     element.style.setProperty("--image-x", x == null ? "50%" : typeof x === "number" ? `${x}%` : String(x));
     element.style.setProperty("--image-y", y == null ? "50%" : typeof y === "number" ? `${y}%` : String(y));
+    if (placement.width == null) {
+      element.style.removeProperty("--image-width");
+    } else {
+      element.style.setProperty("--image-width", typeof placement.width === "number" ? `${placement.width}%` : String(placement.width));
+    }
+    if (placement.height == null) {
+      element.style.removeProperty("--image-height");
+    } else {
+      element.style.setProperty("--image-height", typeof placement.height === "number" ? `${placement.height}%` : String(placement.height));
+    }
     element.style.setProperty("--image-scale", String(scale ?? 1));
     element.style.setProperty("--image-alpha", String(alpha ?? 1));
     element.style.setProperty("--image-z", String(z ?? 45));
-    element.dataset.layer = layer ?? "foreground";
+    element.dataset.layer = layer ?? "front";
   }
 
   /**
@@ -373,7 +456,7 @@ export class IrlRenderer {
   _removeImageElement(id, instant) {
     const image = this.images.get(id) ?? {};
     this.images.delete(id);
-    const element = this.imageLayer?.querySelector(`[data-image-id="${id}"]`);
+    const element = this.surface?.querySelector(`[data-image-id="${id}"]`);
     if (!element) {
       return;
     }

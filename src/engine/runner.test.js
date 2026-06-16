@@ -42,6 +42,7 @@ import {
   streamChatBlock,
   streamNarration,
   streamImage,
+  streamVideo,
   streamLayout,
   streamPost,
   streamSystem,
@@ -52,6 +53,9 @@ import {
   socialFollow,
   socialLike,
   socialPost,
+  call,
+  endCall,
+  voicemail,
   condition,
   roll
 } from "./commands/index.js";
@@ -81,6 +85,8 @@ function fakeRenderer(surface, commands, projections = []) {
     renderPhoneHomeState: vi.fn(),
     renderGalleryState: vi.fn(),
     renderSocialState: vi.fn(),
+    renderPhoneCallState: vi.fn(),
+    renderCallsState: vi.fn(),
     clearChoices: vi.fn(),
     setExitTransition: vi.fn(),
     setImageExitTransition: vi.fn(),
@@ -92,10 +98,13 @@ function fakeRenderer(surface, commands, projections = []) {
     showLineBlock: vi.fn(),
     renderLineBlockInstant: vi.fn(),
     showChoice: vi.fn(),
+    showCallLine: vi.fn(),
     setStreamLayout: vi.fn(),
     setStreamTitle: vi.fn(),
     setStreamWindow: vi.fn(),
     showStreamImage: vi.fn(),
+    showStreamVideo: vi.fn(),
+    renderStreamVideoInstant: vi.fn(),
     showStreamChatBlock: vi.fn(),
     renderStreamChatBlockInstant: vi.fn(),
     showTransition: vi.fn(),
@@ -128,6 +137,7 @@ function fakeRenderers() {
     streaming: fakeRenderer("streaming", [
       "streamLayout",
       "streamImage",
+      "streamVideo",
       "streamChatBlock",
       "streamNarration",
       "streamTitle",
@@ -139,7 +149,9 @@ function fakeRenderers() {
     ], ["renderStreamingState"]),
     phone_home: fakeRenderer("phone_home", ["choice", "transition"], ["renderPhoneHomeState"]),
     gallery: fakeRenderer("gallery", ["choice", "transition"], ["renderGalleryState"]),
-    social: fakeRenderer("social", ["choice", "transition"], ["renderSocialState"])
+    social: fakeRenderer("social", ["choice", "transition"], ["renderSocialState"]),
+    phone_call: fakeRenderer("phone_call", ["call", "endCall", "choice", "transition"], ["renderPhoneCallState"]),
+    calls: fakeRenderer("calls", ["choice", "transition"], ["renderCallsState"])
   };
 }
 
@@ -554,6 +566,77 @@ describe("SceneRunner surface stack", () => {
 
     expect(runner.surfaceStack).toEqual(["irl", "phone_home"]);
     expect(runner.state.visuals.phone.currentApp).toBe("home");
+  });
+
+  it("blocks phone app navigation while an authored phone call is active", () => {
+    const { runner, compositor } = makeRunner([
+      stage("phone_call"),
+      call("alex"),
+      say("alex", "Pick up."),
+      endCall(),
+      stage("irl"),
+      say("done")
+    ]);
+
+    runner.start();
+
+    expect(runner.state.currentSurface).toBe("phone_call");
+    expect(runner.state.visuals.phoneCall.active).toBe(true);
+    runner.openPhoneApp("home");
+    expect(runner.isPhoneOpen()).toBe(false);
+    expect(runner.state.surfaceStack).toEqual(["phone_call"]);
+    runner.togglePhone();
+    expect(runner.isPhoneOpen()).toBe(false);
+
+    compositor.showDialogue.mock.calls[0][2].onComplete();
+    runner.advance();
+    expect(runner.state.visuals.phoneCall.active).toBe(false);
+    expect(runner.state.visuals.calls.recents[0]).toMatchObject({
+      contact: { id: "alex" },
+      status: "completed"
+    });
+  });
+
+  it("lets authors opt out of automatic call log entries", () => {
+    const { runner, compositor } = makeRunner([
+      stage("phone_call"),
+      call("alex", { log: false }),
+      say("alex", "This should stay off the call log."),
+      endCall(),
+      stage("irl"),
+      say("done")
+    ]);
+
+    runner.start();
+    compositor.showDialogue.mock.calls[0][2].onComplete();
+    runner.advance();
+
+    expect(runner.state.visuals.calls.recents).toEqual([]);
+  });
+
+  it("adds voicemail entries to the Calls app without opening phone navigation", () => {
+    const { runner } = makeRunner([
+      stage("irl"),
+      voicemail("vm_001", "alex", {
+        text: "Call me back.",
+        audio: "alex_voicemail",
+        notify: true
+      }),
+      say("done")
+    ]);
+
+    runner.start();
+
+    expect(runner.state.visuals.calls.voicemails).toEqual([
+      expect.objectContaining({
+        id: "vm_001",
+        contact: expect.objectContaining({ id: "alex" }),
+        text: "Call me back.",
+        audio: "alex_voicemail"
+      })
+    ]);
+    expect(runner.state.visuals.phone.badges.calls).toBe(true);
+    expect(runner.isPhoneOpen()).toBe(false);
   });
 
   it("adds received text notifications to the conversation list as actionable rows", () => {
@@ -2471,18 +2554,18 @@ describe("SceneRunner rollback sprite state", () => {
     ], { onBackground });
 
     runner.start();
-    expect(runner.state.visuals.background).toMatchObject({ id: "kitchen day" });
+    expect(runner.state.visuals.background).toMatchObject({ id: "__background", asset: "kitchen day" });
 
     completeDialogue(compositor, 0);
     runner.advance();
-    expect(runner.state.visuals.background).toMatchObject({ id: "bedroom night" });
+    expect(runner.state.visuals.background).toMatchObject({ id: "__background", asset: "bedroom night" });
 
     runner.rollBack();
-    expect(runner.state.visuals.background).toMatchObject({ id: "kitchen day" });
+    expect(runner.state.visuals.background).toMatchObject({ id: "__background", asset: "kitchen day" });
     expect(onBackground).toHaveBeenLastCalledWith("kitchen day", expect.objectContaining({ transition: "cut" }));
 
     runner.rollForward();
-    expect(runner.state.visuals.background).toMatchObject({ id: "bedroom night" });
+    expect(runner.state.visuals.background).toMatchObject({ id: "__background", asset: "bedroom night" });
   });
 
   it("restores a snapshot save through rollback reconstruction state", () => {
@@ -2543,7 +2626,7 @@ describe("SceneRunner rollback sprite state", () => {
       asset: "demo_portrait",
       alpha: 0.5
     });
-    expect(runner.state.visuals.background).toMatchObject({ id: "bedroom night" });
+    expect(runner.state.visuals.background).toMatchObject({ id: "__background", asset: "bedroom night" });
     expect(compositor.showDialogue).toHaveBeenCalledWith(
       expect.objectContaining({ message: "second" }),
       expect.anything(),
@@ -2847,14 +2930,100 @@ describe("SceneRunner rollback sprite state", () => {
 
     runner.start();
 
-    expect(runner.state.visuals.streaming.window).toEqual({
+    expect(runner.state.visuals.streaming.window).toMatchObject({
       state: "live",
-      image: "cam_one"
+      image: "cam_one",
+      media: {
+        kind: "image",
+        asset: "cam_one"
+      }
     });
-    expect(runner.rollbackBuffer[0].visuals.streaming.window).toEqual({
+    expect(runner.rollbackBuffer[0].visuals.streaming.window).toMatchObject({
       state: "live",
-      image: "cam_one"
+      image: "cam_one",
+      media: {
+        kind: "image",
+        asset: "cam_one"
+      }
     });
     expect(renderers.streaming.showStreamImage).toHaveBeenCalledOnce();
+  });
+
+  it("lets non-looping stream video advance while it plays", () => {
+    const { runner, renderers } = makeRunner([
+      stage("streaming"),
+      streamVideo("clip_one", { mode: "replace", image: "cam_one", startAt: 100, endAt: 900 }),
+      streamChatBlock([streamChat("viewer1", "video is running")])
+    ]);
+
+    runner.start();
+
+    expect(runner.state.visuals.streaming.window).toMatchObject({
+      state: "live",
+      image: null,
+      media: {
+        kind: "video",
+        asset: "clip_one",
+        mode: "replace",
+        startAt: 100,
+        endAt: 900,
+        endImage: "cam_one"
+      }
+    });
+    expect(renderers.streaming.showStreamVideo).toHaveBeenCalledOnce();
+    expect(renderers.streaming.showStreamChatBlock).toHaveBeenCalledOnce();
+
+    renderers.streaming.showStreamVideo.mock.calls[0][1].onComplete();
+
+    expect(runner.state.visuals.streaming.window).toMatchObject({
+      state: "live",
+      image: "cam_one",
+      media: {
+        kind: "image",
+        asset: "cam_one"
+      }
+    });
+  });
+
+  it("can wait for a stream video when the author opts in", () => {
+    const { runner, renderers } = makeRunner([
+      stage("streaming"),
+      streamVideo("clip_one", { mode: "replace", image: "cam_one", wait: true }),
+      streamChatBlock([streamChat("viewer1", "after video")])
+    ]);
+
+    runner.start();
+
+    expect(renderers.streaming.showStreamVideo).toHaveBeenCalledOnce();
+    expect(renderers.streaming.showStreamChatBlock).not.toHaveBeenCalled();
+
+    renderers.streaming.showStreamVideo.mock.calls[0][1].onComplete();
+    expect(renderers.streaming.showStreamChatBlock).not.toHaveBeenCalled();
+
+    runner.advance();
+
+    expect(renderers.streaming.showStreamChatBlock).toHaveBeenCalledOnce();
+  });
+
+  it("lets looping stream video advance immediately", () => {
+    const { runner, renderers } = makeRunner([
+      stage("streaming"),
+      streamVideo("loop_one", { mode: "loop" }),
+      streamChatBlock([streamChat("viewer1", "loop is running")])
+    ]);
+
+    runner.start();
+
+    expect(renderers.streaming.renderStreamVideoInstant).toHaveBeenCalledOnce();
+    expect(runner.state.visuals.streaming.window).toMatchObject({
+      state: "live",
+      media: {
+        kind: "video",
+        asset: "loop_one",
+        mode: "loop",
+        loop: true
+      }
+    });
+    expect(renderers.streaming.showStreamChatBlock).toHaveBeenCalledOnce();
   });
 });

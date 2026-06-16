@@ -16,14 +16,16 @@ describe("surface module harness", () => {
   it("registers the built-in surfaces", () => {
     const registry = createSurfaceRegistry();
 
-    expect([...registry.keys()]).toEqual(["irl", "texting", "streaming", "phone_home", "gallery", "social"]);
+    expect([...registry.keys()]).toEqual(["irl", "texting", "streaming", "phone_home", "gallery", "social", "phone_call", "calls"]);
     expect(Object.fromEntries([...registry].map(([id, surface]) => [id, surface.kind]))).toEqual({
       irl: "story",
       texting: "story",
       streaming: "story",
       phone_home: "app",
       gallery: "app",
-      social: "app"
+      social: "app",
+      phone_call: "story",
+      calls: "app"
     });
   });
 
