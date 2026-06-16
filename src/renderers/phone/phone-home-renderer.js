@@ -1,4 +1,5 @@
 import { PHONE_HOME_SURFACE } from "../../engine/surfaces/index.js";
+import { escapeAttr, escapeHtml } from "../html.js";
 import { PhoneShell, stopPhoneStoryAdvance } from "./phone-shell.js";
 
 const APP_LABELS = {
@@ -160,10 +161,10 @@ export class PhoneHomeRenderer {
     const hasBadge = Boolean(phone.badges?.[app]);
     const tone = app.replace(/[^a-z0-9_-]/gi, "-").toLowerCase();
     return `
-      <button class="phone-app-icon phone-app-icon--${tone}" type="button" data-phone-app="${app}" aria-label="${label}">
+      <button class="phone-app-icon phone-app-icon--${escapeAttr(tone)}" type="button" data-phone-app="${escapeAttr(app)}" aria-label="${escapeAttr(label)}">
         <span class="phone-app-icon-glyph" aria-hidden="true">${glyph}</span>
         ${hasBadge ? `<span class="phone-app-badge" aria-hidden="true"></span>` : ""}
-        <span class="phone-app-label">${label}</span>
+        <span class="phone-app-label">${escapeHtml(label)}</span>
       </button>
     `;
   }
@@ -180,6 +181,6 @@ export class PhoneHomeRenderer {
     if (APP_ICONS[app]) {
       return APP_ICONS[app];
     }
-    return phoneApps[app]?.icon ?? label.slice(0, 1);
+    return escapeHtml(phoneApps[app]?.icon ?? label.slice(0, 1));
   }
 }

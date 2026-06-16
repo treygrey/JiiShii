@@ -21,9 +21,9 @@ export function block(texts) {
  */
 export function thread(id, overrides = {}) {
   return {
+    ...overrides,
     type: "thread",
-    id,
-    ...overrides
+    id
   };
 }
 
@@ -37,10 +37,10 @@ export function thread(id, overrides = {}) {
  */
 export function text(id, message, overrides = {}) {
   return {
+    ...overrides,
     kind: "text",
     id,
-    message,
-    ...overrides
+    message
   };
 }
 
@@ -54,10 +54,10 @@ export function text(id, message, overrides = {}) {
  */
 export function textImage(id, image, overrides = {}) {
   return {
+    ...overrides,
     kind: "image",
     id,
-    image,
-    ...overrides
+    image
   };
 }
 
@@ -73,7 +73,7 @@ export function textImage(id, image, overrides = {}) {
 export function photo(id, image, options = {}) {
   return {
     type: "textBlock",
-    texts: [{ kind: "image", id, image, ...options }]
+    texts: [{ ...options, kind: "image", id, image }]
   };
 }
 

@@ -128,9 +128,9 @@ export function transition(text, target = null) {
  */
 export function pause(duration = 1000, options = {}) {
   return {
+    ...options,
     type: "pause",
-    duration,
-    ...options
+    duration
   };
 }
 

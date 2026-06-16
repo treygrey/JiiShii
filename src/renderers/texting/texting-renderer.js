@@ -1,5 +1,6 @@
 import { renderMarkup } from "../../engine/dom/markup.js";
 import { TEXTING_SURFACE } from "../../engine/surfaces/index.js";
+import { escapeHtml } from "../html.js";
 import {
   PHONE_ADVANCE_DEAD_ZONE_EVENTS,
   bindPhoneAdvanceDeadZones,
@@ -285,7 +286,7 @@ export class TextingRenderer {
     button.innerHTML = `
       <span class="phone-thread-notification-avatar" aria-hidden="true"></span>
       <span class="phone-thread-notification-copy">
-        <strong>${contact.name ?? "Messages"}</strong>
+        <strong>${escapeHtml(contact.name ?? "Messages")}</strong>
         <span>New message</span>
       </span>
     `;
@@ -422,8 +423,8 @@ export class TextingRenderer {
     button.innerHTML = `
       <span class="thread-list-avatar" aria-hidden="true"></span>
       <span class="thread-list-copy">
-        <strong>${contact.name ?? thread.id}</strong>
-        <span>${preview}</span>
+        <strong>${escapeHtml(contact.name ?? thread.id)}</strong>
+        <span>${escapeHtml(preview)}</span>
       </span>
       ${thread.unread ? `<span class="thread-unread-dot" aria-label="Unread"></span>` : ""}
     `;
@@ -740,7 +741,7 @@ export class TextingRenderer {
     const button = document.createElement("button");
     button.className = "transition-button";
     button.type = "button";
-    button.innerHTML = `<span>${command.text}</span><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>`;
+    button.innerHTML = `<span>${escapeHtml(command.text)}</span><svg viewBox="0 0 24 24" aria-hidden="true"><polyline points="9 6 15 12 9 18"></polyline></svg>`;
     button.addEventListener("click", (event) => {
       event.stopPropagation();
       onSelect();

@@ -6,8 +6,8 @@
  */
 export function streamLayout(definition) {
   return {
-    type: "streamLayout",
-    ...definition
+    ...definition,
+    type: "streamLayout"
   };
 }
 
@@ -20,9 +20,9 @@ export function streamLayout(definition) {
  */
 export function streamImage(image, options = {}) {
   return {
+    ...options,
     type: "streamImage",
-    image,
-    ...options
+    image
   };
 }
 
@@ -62,10 +62,10 @@ export function streamChatBlock(idOrMessages, messagesOrOptions = {}, options = 
   const resolvedOptions = hasId ? options : messagesOrOptions;
 
   return {
-    type: "streamChatBlock",
+    ...resolvedOptions,
     ...(hasId ? { id: idOrMessages } : {}),
     messages: Array.isArray(messages) ? messages : [],
-    ...resolvedOptions
+    type: "streamChatBlock"
   };
 }
 
@@ -79,10 +79,10 @@ export function streamChatBlock(idOrMessages, messagesOrOptions = {}, options = 
  */
 export function streamChat(id, message, overrides = {}) {
   return {
+    ...overrides,
     kind: "streamChat",
     id,
-    message,
-    ...overrides
+    message
   };
 }
 
@@ -95,9 +95,9 @@ export function streamChat(id, message, overrides = {}) {
  */
 export function streamNarration(message, options = {}) {
   return {
+    ...options,
     type: "streamNarration",
-    message,
-    ...options
+    message
   };
 }
 

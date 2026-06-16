@@ -219,9 +219,30 @@ test("poisoned phone-app state renders as text instead of executable markup", as
       text: poison,
       transcript: [{ name: poison, message: poison }]
     });
+    runner.state.visuals.texting.threads.poison = {
+      id: "poison",
+      contact: { id: "poison", name: poison, avatar: poison },
+      messages: [{ id: "poison", message: poison }],
+      preview: poison,
+      unread: true,
+      lastReceivedAt: 99
+    };
+    runner.phoneApps.poison = { label: poison, icon: poison };
+    runner.state.visuals.phone.enabledApps.push("poison");
+    runner.state.visuals.phone.homeAppOrder.push("poison");
   }, payload);
 
   await page.getByLabel("Open phone").click();
+  await expect(page.locator(".phone-app-icon").filter({ hasText: payload })).toBeVisible();
+  await expect(page.locator(".phone-app-icon svg[onload]")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__s)).toBe(0);
+
+  await page.getByRole("button", { name: "Messages" }).click();
+  await expect(page.locator(".thread-list-row").filter({ hasText: payload })).toBeVisible();
+  await expect(page.locator(".thread-list-row svg[onload]")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__s)).toBe(0);
+
+  await page.locator(".texting-shell [data-phone-nav='back']").click();
   await page.getByRole("button", { name: "Social" }).click();
   await expect(page.locator(".social-phone-shell")).toBeVisible();
   await expect(page.locator(".social-post").filter({ hasText: payload })).toBeVisible();
@@ -273,6 +294,39 @@ test("CG beats fill the authored frame instead of the padded play area", async (
 
   expect(layout.cg).toEqual(layout.root);
   expect(layout.media).toEqual(layout.root);
+});
+
+test("weird IRL media ids and missing asset labels do not break projection", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  await startScene(page, "scene-alex-branch-test");
+  await acceptNameInput(page);
+
+  const payload = "bad\"] [data-owned=\"yes";
+  const missingAsset = "<svg/onload=__media=1>";
+  await page.evaluate(({ payload: mediaId, missingAsset: asset }) => {
+    window.__media = 0;
+    const runner = window.__JIISHII_TEST__?.runner;
+    runner.state.sprites.irl.images = [{
+      id: mediaId,
+      asset,
+      kind: "image",
+      layer: "front"
+    }];
+    runner.projectSurface("irl", { instant: true });
+  }, { payload, missingAsset });
+
+  await expect(page.locator(".irl-image-placeholder")).toHaveText(missingAsset);
+  await expect(page.locator(".irl-image-placeholder svg[onload]")).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.__media)).toBe(0);
+
+  await page.evaluate(() => {
+    const runner = window.__JIISHII_TEST__?.runner;
+    runner.state.sprites.irl.images = [];
+    runner.projectSurface("irl", { instant: true });
+  });
+  await expect(page.locator(".irl-image-placeholder")).toHaveCount(0);
+  expect(pageErrors).toEqual([]);
 });
 
 test("story texting ignores Android back spam and preserves the active reply choice", async ({ page }) => {

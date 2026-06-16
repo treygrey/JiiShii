@@ -213,8 +213,8 @@ export function useCharacter(id, overrides = {}) {
  */
 export function character(definition) {
   return {
+    ...definition,
     type: "character",
-    useGlobal: false,
-    ...definition
+    useGlobal: false
   };
 }

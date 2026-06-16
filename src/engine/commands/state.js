@@ -208,7 +208,7 @@ export function input(key, options = {}) {
  */
 export function condition(definition) {
   return {
-    type: "condition",
-    ...definition
+    ...definition,
+    type: "condition"
   };
 }

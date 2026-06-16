@@ -17,6 +17,23 @@ function classSuffix(value) {
 }
 
 /**
+ * Finds an element by a data-* value without interpolating the value into a CSS
+ * selector. Authored ids are allowed to be plain strings, so renderer lookups
+ * should not explode if an id contains selector punctuation.
+ *
+ * @param {ParentNode|null} root - Search root.
+ * @param {string} selector - Static data-* selector.
+ * @param {string} datasetKey - DOMStringMap key, e.g. "imageId".
+ * @param {unknown} value - Expected data value.
+ * @returns {Element|null} Matching element.
+ */
+function findDataElement(root, selector, datasetKey, value) {
+  const expected = String(value ?? "");
+  return [...(root?.querySelectorAll(selector) ?? [])]
+    .find((element) => element.dataset?.[datasetKey] === expected) ?? null;
+}
+
+/**
  * Renders the IRL VN surface as a compositor layer: a transparent stage that
  * sits on the shared background and shows layered character sprites
  * (outfit + head + expression). Dialogue and choices come from the shared
@@ -300,7 +317,7 @@ export class IrlRenderer {
 
     this.images.set(image.id, { ...image });
     this.clearImageExitTimer(image.id);
-    let element = this.surface.querySelector(`[data-image-id="${image.id}"]`);
+    let element = findDataElement(this.surface, "[data-image-id]", "imageId", image.id);
     const isNewElement = !element;
     if (!element) {
       element = document.createElement("div");
@@ -323,7 +340,11 @@ export class IrlRenderer {
     if (url) {
       this._renderMediaElement(element, image, url);
     } else {
-      element.innerHTML = `<div class="irl-image-placeholder">${image.asset}</div>`;
+      element.innerHTML = "";
+      const placeholder = document.createElement("div");
+      placeholder.className = "irl-image-placeholder";
+      placeholder.textContent = image.asset;
+      element.append(placeholder);
     }
   }
 
@@ -350,7 +371,15 @@ export class IrlRenderer {
    */
   _renderMediaElement(element, image, url) {
     if (image.kind !== "video") {
-      element.innerHTML = `<img class="irl-image-media" src="${url}" alt="" />`;
+      let img = element.querySelector("img.irl-image-media");
+      if (!img) {
+        element.innerHTML = "";
+        img = document.createElement("img");
+        img.className = "irl-image-media";
+        img.alt = "";
+        element.append(img);
+      }
+      img.src = url;
       return;
     }
     let video = element.querySelector("video");
@@ -456,7 +485,7 @@ export class IrlRenderer {
   _removeImageElement(id, instant) {
     const image = this.images.get(id) ?? {};
     this.images.delete(id);
-    const element = this.surface?.querySelector(`[data-image-id="${id}"]`);
+    const element = findDataElement(this.surface, "[data-image-id]", "imageId", id);
     if (!element) {
       return;
     }
@@ -516,7 +545,7 @@ export class IrlRenderer {
     });
     this.clearSpriteExitTimer(id);
 
-    let element = this.characterLayer.querySelector(`[data-character-id="${id}"]`);
+    let element = findDataElement(this.characterLayer, "[data-character-id]", "characterId", id);
     const isNewElement = !element;
     if (!element) {
       element = document.createElement("div");
@@ -616,7 +645,7 @@ export class IrlRenderer {
       return;
     }
     state.expression = expression;
-    const element = this.characterLayer.querySelector(`[data-character-id="${id}"]`);
+    const element = findDataElement(this.characterLayer, "[data-character-id]", "characterId", id);
     if (element) {
       const transition = resolveIrlTransition(state.transition, state);
       this._renderFigure(element, id, state.outfit, expression, state.body ?? DEFAULT_BODY, { transition });
@@ -907,7 +936,7 @@ export class IrlRenderer {
   _removeSpriteElement(id, instant) {
     const sprite = this.sprites.get(id) ?? {};
     this.sprites.delete(id);
-    const el = this.characterLayer?.querySelector(`[data-character-id="${id}"]`);
+    const el = findDataElement(this.characterLayer, "[data-character-id]", "characterId", id);
     if (!el) {
       return;
     }
@@ -954,7 +983,7 @@ export class IrlRenderer {
     const entries = [];
     let shown = 0;
     for (const [id, state] of this.sprites.entries()) {
-      const el = this.characterLayer.querySelector(`[data-character-id="${id}"]`);
+      const el = findDataElement(this.characterLayer, "[data-character-id]", "characterId", id);
       if (!el) {
         continue;
       }

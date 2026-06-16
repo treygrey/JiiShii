@@ -9,10 +9,10 @@
  */
 export function narration(message, overrides = {}) {
   return {
+    ...overrides,
     kind: "narration",
     id: "__narration",
-    message,
-    ...overrides
+    message
   };
 }
 
@@ -26,9 +26,9 @@ export function narration(message, overrides = {}) {
  */
 export function narrate(message, overrides = {}) {
   return {
+    ...overrides,
     type: "narration",
-    message,
-    ...overrides
+    message
   };
 }
 
@@ -44,10 +44,10 @@ export function narrate(message, overrides = {}) {
  */
 export function dialogue(id, message, overrides = {}) {
   return {
+    ...overrides,
     type: "dialogue",
     id,
-    message,
-    ...overrides
+    message
   };
 }
 
@@ -59,8 +59,8 @@ export function dialogue(id, message, overrides = {}) {
  */
 export function flash(options = {}) {
   return {
-    type: "flash",
-    ...options
+    ...options,
+    type: "flash"
   };
 }
 
@@ -72,8 +72,8 @@ export function flash(options = {}) {
  */
 export function shake(options = {}) {
   return {
-    type: "shake",
-    ...options
+    ...options,
+    type: "shake"
   };
 }
 
@@ -93,9 +93,9 @@ export function shake(options = {}) {
  */
 export function background(id, options = {}) {
   return {
+    ...options,
     type: "background",
-    id,
-    ...options
+    id
   };
 }
 
@@ -115,9 +115,9 @@ export function background(id, options = {}) {
  */
 export function show(id, options = {}) {
   return {
+    ...options,
     type: "showCharacter",
-    id,
-    ...options
+    id
   };
 }
 
@@ -129,9 +129,9 @@ export function show(id, options = {}) {
  */
 export function hide(id, options = {}) {
   return {
+    ...options,
     type: "hideCharacter",
-    id,
-    ...options
+    id
   };
 }
 
@@ -143,8 +143,8 @@ export function hide(id, options = {}) {
  */
 export function hideAll(options = {}) {
   return {
-    type: "hideAllCharacters",
-    ...options
+    ...options,
+    type: "hideAllCharacters"
   };
 }
 
@@ -157,8 +157,8 @@ export function hideAll(options = {}) {
  */
 export function clearStage(options = {}) {
   return {
-    type: "clearIrlStage",
-    ...options
+    ...options,
+    type: "clearIrlStage"
   };
 }
 
@@ -172,10 +172,10 @@ export function clearStage(options = {}) {
  */
 export function expression(id, value, options = {}) {
   return {
+    ...options,
     type: "setCharacterExpression",
     id,
-    expression: value,
-    ...options
+    expression: value
   };
 }
 
@@ -190,10 +190,10 @@ export function expression(id, value, options = {}) {
 export function move(id, placement, options = {}) {
   const placementOptions = typeof placement === "string" ? { at: placement } : { ...(placement ?? {}) };
   return {
-    type: "moveCharacter",
-    id,
     ...placementOptions,
-    ...options
+    ...options,
+    type: "moveCharacter",
+    id
   };
 }
 
@@ -206,11 +206,11 @@ export function move(id, placement, options = {}) {
  */
 export function cg(asset, options = {}) {
   return {
+    ...options,
     type: "showIrlImage",
     id: options.id ?? "__cg",
     asset,
-    kind: "cg",
-    ...options
+    kind: "cg"
   };
 }
 
@@ -222,9 +222,9 @@ export function cg(asset, options = {}) {
  */
 export function clearCg(options = {}) {
   return {
+    ...options,
     type: "clearIrlImage",
-    kind: "cg",
-    ...options
+    kind: "cg"
   };
 }
 
@@ -238,11 +238,11 @@ export function clearCg(options = {}) {
  */
 export function image(id, asset, options = {}) {
   return {
+    ...options,
     type: "showIrlImage",
     id,
     asset,
-    kind: "image",
-    ...options
+    kind: "image"
   };
 }
 
@@ -257,11 +257,11 @@ export function image(id, asset, options = {}) {
 export function moveImage(id, placement, options = {}) {
   const placementOptions = typeof placement === "string" ? { at: placement } : { ...(placement ?? {}) };
   return {
+    ...placementOptions,
+    ...options,
     type: "moveIrlImage",
     id,
-    kind: "image",
-    ...placementOptions,
-    ...options
+    kind: "image"
   };
 }
 
@@ -274,10 +274,10 @@ export function moveImage(id, placement, options = {}) {
  */
 export function clearImage(id, options = {}) {
   return {
+    ...options,
     type: "clearIrlImage",
     id,
-    kind: "image",
-    ...options
+    kind: "image"
   };
 }
 
@@ -355,10 +355,10 @@ export function say(a, b, c) {
     options = b ?? {};
   }
   return {
+    ...options,
     type: "say",
     speaker,
-    lines: Array.isArray(lines) ? lines : [lines],
-    ...options
+    lines: Array.isArray(lines) ? lines : [lines]
   };
 }
 
@@ -385,10 +385,10 @@ export function lineBlock(lines) {
  */
 export function line(id, message, overrides = {}) {
   return {
+    ...overrides,
     kind: "line",
     id,
-    message,
-    ...overrides
+    message
   };
 }
 
@@ -407,8 +407,8 @@ export function choice(definition) {
   }
   // Legacy form: choice({ id, options: [...] }).
   return {
-    type: "choice",
     ...definition,
+    type: "choice",
     options: (definition.options ?? []).map(normalizeOption)
   };
 }

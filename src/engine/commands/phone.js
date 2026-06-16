@@ -33,9 +33,9 @@ export function phoneApps(apps) {
  */
 export function phoneNotify(app, options = {}) {
   return {
+    ...options,
     type: "phoneNotify",
-    app,
-    ...options
+    app
   };
 }
 
@@ -91,10 +91,10 @@ export function setWallpaper(image) {
  */
 export function saveGalleryImage(id, image, options = {}) {
   return {
+    ...options,
     type: "saveGalleryImage",
     id,
-    image,
-    ...options
+    image
   };
 }
 
@@ -125,9 +125,9 @@ export function removeGalleryImage(id) {
  */
 export function socialPost(id, options = {}) {
   return {
+    ...options,
     type: "socialPost",
-    id,
-    ...options
+    id
   };
 }
 
@@ -140,9 +140,9 @@ export function socialPost(id, options = {}) {
  */
 export function socialFollow(poster, options = {}) {
   return {
+    ...options,
     type: "socialFollow",
-    poster,
-    ...options
+    poster
   };
 }
 
@@ -155,8 +155,8 @@ export function socialFollow(poster, options = {}) {
  */
 export function socialLike(id, options = {}) {
   return {
+    ...options,
     type: "socialLike",
-    id,
-    ...options
+    id
   };
 }

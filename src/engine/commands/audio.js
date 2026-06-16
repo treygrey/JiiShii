@@ -7,9 +7,9 @@
  */
 export function music(id, options = {}) {
   return {
+    ...options,
     type: "music",
-    id,
-    ...options
+    id
   };
 }
 
@@ -21,8 +21,8 @@ export function music(id, options = {}) {
  */
 export function stopMusic(options = {}) {
   return {
-    type: "stopMusic",
-    ...options
+    ...options,
+    type: "stopMusic"
   };
 }
 
@@ -35,9 +35,9 @@ export function stopMusic(options = {}) {
  */
 export function ambience(id, options = {}) {
   return {
+    ...options,
     type: "ambience",
-    id,
-    ...options
+    id
   };
 }
 
@@ -50,9 +50,9 @@ export function ambience(id, options = {}) {
  */
 export function audioScene(id, options = {}) {
   return {
+    ...options,
     type: "audioScene",
-    id,
-    ...options
+    id
   };
 }
 
@@ -64,8 +64,8 @@ export function audioScene(id, options = {}) {
  */
 export function stopAmbience(options = {}) {
   return {
-    type: "stopAmbience",
-    ...options
+    ...options,
+    type: "stopAmbience"
   };
 }
 
@@ -81,9 +81,9 @@ export function stopAmbience(options = {}) {
  */
 export function sound(id, options = {}) {
   return {
+    ...options,
     type: "sound",
-    id,
-    ...options
+    id
   };
 }
 
@@ -96,9 +96,9 @@ export function sound(id, options = {}) {
  */
 export function stopSound(handle, options = {}) {
   return {
+    ...options,
     type: "stopSound",
-    id: handle,
-    ...options
+    id: handle
   };
 }
 
@@ -112,8 +112,8 @@ export function stopSound(handle, options = {}) {
  */
 export function voice(id, options = {}) {
   return {
+    ...options,
     type: "voice",
-    id,
-    ...options
+    id
   };
 }
