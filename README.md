@@ -87,6 +87,8 @@ JiiShii is released under the MIT License. See `LICENSE`.
 
 Start with:
 
+- `docs/START_HERE.md`
+- `docs/ADVANCED_AUTHORING.md`
 - `docs/PROGRAMMING_SCENES.md`
 - `docs/GAME_PACKAGE_GUIDE.md`
 - `docs/COMPILING_DESKTOP_PLAYER.md`
@@ -95,7 +97,3 @@ Start with:
 - `docs/SPRITE_COOKBOOK.md`
 - `docs/ENGINE_STRUCTURE.md`
 - `templates/game-package/README.md`
-
-## License
-
-License is not selected yet.

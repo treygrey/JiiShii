@@ -385,7 +385,7 @@ function validateScene(scene, ctx) {
         validateChoiceTargets(command, where, ctx);
         for (const option of command.options ?? []) {
           validateRequiredString(option?.text, `${where}: choice option needs text.`, ctx);
-          const target = option.goto ?? option.jump;
+          const target = option.goto;
           if (target && !resolveTarget(target)) {
             ctx.errors.push(`${where}: a choice's goto("${target}") — no mark here and no scene with that id.${didYouMean(target, [...marks, ...ctx.sceneIds])}`);
           }
@@ -452,7 +452,7 @@ function validateScene(scene, ctx) {
         validateConditionCommand(command, where, marks, resolveTarget, ctx);
         break;
       case "label":
-        validateRequiredString(command.id, `${where}: mark()/label() needs a name.`, ctx);
+        validateRequiredString(command.id, `${where}: mark() needs a name.`, ctx);
         break;
       case "setFlag":
       case "setVar":
@@ -644,18 +644,6 @@ function validateConditionCommand(command, where, marks, resolveTarget, ctx) {
 function conditionPredicate(command) {
   if (command.if !== undefined) {
     return command.if;
-  }
-  if (command.flag !== undefined) {
-    return { flag: command.flag };
-  }
-  if (command.var !== undefined) {
-    const predicate = { var: command.var };
-    for (const key of ["is", "isNot", "atLeast", "atMost", "moreThan", "lessThan", "hasText", "op", "value"]) {
-      if (key in command) {
-        predicate[key] = command[key];
-      }
-    }
-    return predicate;
   }
   return null;
 }
@@ -908,7 +896,7 @@ function validateChoiceId(command, where, ctx) {
 function validateChoiceTargets(command, where, ctx) {
   const seenTargets = new Set();
   for (const option of command.options ?? []) {
-    const target = option?.goto ?? option?.jump;
+    const target = option?.goto;
     if (!target) continue;
     if (seenTargets.has(target)) {
       ctx.warnings.push(`${where}: choice() has more than one option pointing to "${target}". If that is intentional, consider merging the options.`);
@@ -1226,21 +1214,6 @@ function validateSurfaces(scene, ctx) {
       case "openLayer":
         if (!validateSurfaceId(command.id, "open")) break;
         layers.push(command.id);
-        break;
-      case "pushSurface":
-        if (!validateSurfaceId(command.id, "pushSurface")) break;
-        if (base == null) {
-          base = command.id;
-        } else if (!layers.includes(command.id) && base !== command.id) {
-          layers.push(command.id);
-        }
-        break;
-      case "popSurface":
-        if (layers.length > 0) {
-          layers.pop();
-        } else {
-          ctx.warnings.push(`${where}: popSurface() has no overlay to pop.`);
-        }
         break;
       case "closeLayer": {
         if (!validateSurfaceId(command.id, "close", { allowApp: true })) break;

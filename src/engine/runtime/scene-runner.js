@@ -215,7 +215,7 @@ function evaluatePredicate(predicate, vars, state) {
 }
 
 /**
- * Converts legacy top-level condition fields into the shared predicate shape.
+ * Returns the condition predicate authored under `if`.
  *
  * @param {object} command - Condition command.
  * @returns {Function|object|null} Predicate or null.
@@ -223,18 +223,6 @@ function evaluatePredicate(predicate, vars, state) {
 function conditionPredicate(command) {
   if (command.if !== undefined) {
     return command.if;
-  }
-  if (command.var !== undefined) {
-    const predicate = { var: command.var };
-    for (const key of ["is", "isNot", "atLeast", "atMost", "moreThan", "lessThan", "hasText", "op", "value"]) {
-      if (key in command) {
-        predicate[key] = command[key];
-      }
-    }
-    return predicate;
-  }
-  if (command.flag !== undefined) {
-    return { flag: command.flag };
   }
   return null;
 }
@@ -1056,7 +1044,7 @@ export class SceneRunner {
     recordChoiceSeen(this, choiceCommand, option);
     this.state.choicesMade.push({
       choiceId: choiceCommand.id,
-      selectedOptionId: option.id ?? option.goto ?? option.jump ?? option.text,
+      selectedOptionId: option.id ?? option.goto ?? option.text,
       sceneId: this.scene.id
     });
 
@@ -1070,7 +1058,7 @@ export class SceneRunner {
     this.save();
     this.isWaitingForPlayer = false;
 
-    const target = option.goto ?? option.jump;
+    const target = option.goto;
     if (target && this.registry[target] && !this.labels.has(target)) {
       // Target is another scene — loadScene runs its own loop; don't double-run.
       this.loadScene(target);
@@ -1197,8 +1185,8 @@ export class SceneRunner {
   }
 
   /**
-   * Builds the scene's character map from both the legacy `characters`
-   * declarations and the new `cast` array (auto-resolved from globals).
+   * Builds the scene's character map from scene-local `characters`
+   * declarations and the `cast` array (auto-resolved from globals).
    *
    * @param {object} scene - Scene definition.
    * @returns {Map<string, object>} Character defaults by id.
@@ -1697,8 +1685,7 @@ export class SceneRunner {
 
   /**
    * Evaluates a condition command against the variable store. Supports a
-   * predicate function, structured predicates, legacy truthy flag checks, and
-   * legacy {var, op, value} comparisons.
+   * predicate function and structured predicates.
    *
    * @param {object} command - Condition command.
    * @returns {boolean} Branch result.

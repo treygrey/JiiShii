@@ -1,5 +1,5 @@
 /**
- * Creates a label lookup table for jump targets.
+ * Creates a mark lookup table for goto targets.
  *
  * @param {Array<object>} script - Scene command list.
  * @returns {Map<string, number>} Label id to command index map.

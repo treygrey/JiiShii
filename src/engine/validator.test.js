@@ -25,8 +25,6 @@ import {
   moveImage,
   narrate,
   open,
-  popSurface,
-  pushSurface,
   say,
   scene,
   show,
@@ -223,25 +221,6 @@ describe("validateScenes", () => {
     expect(result.warnings).toEqual([]);
   });
 
-  it("accepts legacy pushSurface and popSurface overlay commands", () => {
-    const result = validateScenes(registryOf(scene({
-      id: "valid_legacy_push_pop_scene",
-      cast: ["me", "alex"],
-      script: [
-        stage("streaming"),
-        streamWindow("offline"),
-        pushSurface("texting"),
-        thread("alex"),
-        say("alex", "still there?"),
-        popSurface(),
-        streamTitle("back to stream")
-      ]
-    })));
-
-    expect(result.errors).toEqual([]);
-    expect(result.warnings).toEqual([]);
-  });
-
   it("errors on commands used on the wrong active surface", () => {
     const result = validateScenes(registryOf(
       scene({
@@ -349,15 +328,13 @@ describe("validateScenes", () => {
       cast: ["me"],
       script: [
         stage("textng"),
-        open("galery"),
-        pushSurface("streamign")
+        open("galery")
       ]
     })));
 
     expectMessage(invalid.errors, 'stage("textng") uses an unknown surface');
     expectMessage(invalid.errors, 'Did you mean "texting"');
     expectMessage(invalid.errors, 'open("galery") uses an unknown surface');
-    expectMessage(invalid.errors, 'pushSurface("streamign") uses an unknown surface');
   });
 
   it("reports missing surface-control ids without corrupting layer simulation", () => {
@@ -373,7 +350,6 @@ describe("validateScenes", () => {
         script: [
           stage("irl"),
           { type: "openLayer" },
-          { type: "pushSurface", id: "" },
           { type: "closeLayer" }
         ]
       }),
@@ -389,7 +365,6 @@ describe("validateScenes", () => {
 
     expectMessage(result.errors, "stage() needs a surface id");
     expectMessage(result.errors, "open() needs a surface id");
-    expectMessage(result.errors, "pushSurface() needs a surface id");
     expectMessage(result.errors, "close() needs a surface id");
     expectMessage(result.errors, 'open("galery") uses an unknown surface');
     expect(result.warnings.some((message) => message.includes("galery"))).toBe(false);
@@ -402,14 +377,12 @@ describe("validateScenes", () => {
       script: [
         stage("gallery"),
         stage("irl"),
-        open("social"),
-        pushSurface("phone_home")
+        open("social")
       ]
     })));
 
     expectMessage(result.errors, 'stage("gallery") targets phone app surface "gallery". Use openPhone("gallery") instead.');
     expectMessage(result.errors, 'open("social") targets phone app surface "social". Use openPhone("social") instead.');
-    expectMessage(result.errors, 'pushSurface("phone_home") targets phone app surface "phone_home". Use openPhone("home") instead.');
   });
 
   it("reports layer stack mistakes", () => {
@@ -428,23 +401,12 @@ describe("validateScenes", () => {
         id: "close_non_top_layer_scene",
         cast: ["me", "alex"],
         script: [stage("irl"), open("texting"), open("streaming"), close("texting")]
-      }),
-      scene({
-        id: "left_pushed_layer_scene",
-        cast: ["me", "alex"],
-        script: [stage("irl"), pushSurface("texting"), thread("alex")]
-      }),
-      scene({
-        id: "pop_without_overlay_scene",
-        cast: ["me"],
-        script: [stage("irl"), popSurface()]
       })
     ));
 
     expectMessage(result.errors, 'close("texting") but "texting" isn\'t open');
     expectMessage(result.warnings, "ends with 1 layer(s) still open");
     expectMessage(result.warnings, "closes a layer that isn't the top one");
-    expectMessage(result.warnings, "popSurface() has no overlay to pop");
   });
 
   it("reports flow errors", () => {
@@ -485,7 +447,7 @@ describe("validateScenes", () => {
         stage("texting"),
         set("trust", 3),
         set("metAlex", true),
-        condition({ var: "trust", atLeast: 3, then: "close", else: "guarded" }),
+        condition({ if: { var: "trust", atLeast: 3 }, then: "close", else: "guarded" }),
         condition({
           if: {
             all: [
@@ -529,8 +491,8 @@ describe("validateScenes", () => {
       script: [
         stage("texting"),
         condition({ then: "missing_then", else: "" }),
-        condition({ flag: "never_set", then: "ok", else: "missing_else" }),
-        condition({ var: "trust", op: "roughly", value: 2, then: "ok", else: "ok" }),
+        condition({ if: { flag: "never_set" }, then: "ok", else: "missing_else" }),
+        condition({ if: { var: "trust", op: "roughly", value: 2 }, then: "ok", else: "ok" }),
         condition({
           if: { any: [] },
           then: [
@@ -597,7 +559,7 @@ describe("validateScenes", () => {
     expectMessage(result.errors, "goto() needs a target");
     expectMessage(result.errors, "choice() needs at least one option");
     expectMessage(result.errors, "choice option needs text");
-    expectMessage(result.errors, "mark()/label() needs a name");
+    expectMessage(result.errors, "mark() needs a name");
     expectMessage(result.errors, "setVar needs a variable name");
     expectMessage(result.errors, "roll needs a variable name");
   });

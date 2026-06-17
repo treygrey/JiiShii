@@ -126,9 +126,9 @@ describe("author command helpers", () => {
       type: "choice",
       id: "choice-a"
     });
-    expect(condition({ type: "sound", flag: "met", then: "yes" })).toMatchObject({
+    expect(condition({ type: "sound", if: { flag: "met" }, then: "yes" })).toMatchObject({
       type: "condition",
-      flag: "met",
+      if: { flag: "met" },
       then: "yes"
     });
     expect(character({ type: "sound", id: "alex", useGlobal: true })).toMatchObject({

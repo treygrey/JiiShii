@@ -47,13 +47,7 @@ function createSyntheticMark(usedMarks, stem) {
  * @returns {object} Predicate-only condition fields.
  */
 function conditionPredicate(definition) {
-  const {
-    then: _then,
-    else: _else,
-    elseIf: _elseIf,
-    ...predicate
-  } = definition;
-  return predicate;
+  return definition.if !== undefined ? { if: definition.if } : {};
 }
 
 /**
@@ -142,7 +136,7 @@ function compileConditionCommand(command, usedMarks) {
 /**
  * Compiles author-friendly script conveniences into the flat command list the
  * runner executes. Today this expands block-style condition() into ordinary
- * condition/mark/goto flow, preserving the old runtime primitive.
+ * condition/mark/goto flow.
  *
  * @param {Array<object>} script - Authored command list.
  * @param {Set<string>} [usedMarks] - Mark names already claimed.

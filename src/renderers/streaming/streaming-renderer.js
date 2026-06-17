@@ -593,10 +593,10 @@ export class StreamingRenderer {
     return true;
   }
 
-  // ---- Compatibility stubs / unused-but-called ----
+  // ---- Instant replay/load handlers ----
 
   /**
-   * Legacy stream image → live window. Kept for compatibility.
+   * Restores stream image state during replay/load.
    *
    * @param {object} command - Stream image command.
    * @returns {void}
@@ -626,7 +626,7 @@ export class StreamingRenderer {
   }
 
   /**
-   * No-op narration instant compat.
+   * No-op for instant narration replay.
    *
    * @returns {void}
    */

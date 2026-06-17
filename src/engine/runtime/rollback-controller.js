@@ -226,14 +226,6 @@ export function replaySceneContextToCurrentCommand(runner) {
         runner.popSurface();
         runner.state.currentCommandIndex += 1;
         break;
-      case "pushSurface":
-        runner.pushSurface(command.id);
-        runner.state.currentCommandIndex += 1;
-        break;
-      case "popSurface":
-        runner.popSurface();
-        runner.state.currentCommandIndex += 1;
-        break;
       case "label":
       case "setFlag":
       case "setVar":
@@ -407,9 +399,6 @@ export function replaySceneContextToCurrentCommand(runner) {
         runner.state.currentCommandIndex += 1;
         break;
       }
-      case "jump":
-        runner.jumpTo(command.target);
-        break;
       case "goto":
         if (runner.labels.has(command.target)) {
           runner.jumpTo(command.target);
@@ -434,10 +423,10 @@ export function replaySceneContextToCurrentCommand(runner) {
         const answer = pendingChoices.shift();
         const option = answer
           ? command.options.find(
-              (candidate) => (candidate.id ?? candidate.goto ?? candidate.jump ?? candidate.text) === answer.selectedOptionId
+              (candidate) => (candidate.id ?? candidate.goto ?? candidate.text) === answer.selectedOptionId
             )
           : null;
-        const optionTarget = option?.goto ?? option?.jump;
+        const optionTarget = option?.goto;
         if (optionTarget && runner.labels.has(optionTarget)) {
           runner.jumpTo(optionTarget);
         } else {

@@ -1,5 +1,5 @@
 /**
- * Adds to a numeric variable (negative subtracts). Alias of inc.
+ * Adds to a numeric variable (negative subtracts).
  *
  * @param {string} key - Variable name.
  * @param {number} [by=1] - Amount to add.
@@ -112,21 +112,6 @@ export function saveVar(key, value) {
 }
 
 /**
- * Increments a numeric variable. Sugar over set with a relative delta.
- *
- * @param {string} key - Variable name.
- * @param {number} [by=1] - Amount to add (negative to subtract).
- * @returns {object} Variable mutation command.
- */
-export function inc(key, by = 1) {
-  return {
-    type: "setVar",
-    key,
-    value: `${by >= 0 ? "+" : ""}${by}`
-  };
-}
-
-/**
  * Draws a seeded random integer in [min, max] into a variable. Deterministic
  * under replay/rollback because it advances the PRNG stored in state.
  *
@@ -191,8 +176,7 @@ export function input(key, options = {}) {
 
 /**
  * Branches on the variable store. `then`, `elseIf`, and `else` may contain
- * inline command arrays, while legacy string targets still jump to marks or
- * scene ids.
+ * inline command arrays, while string targets route to marks or scene ids.
  *
  * Supports these common forms:
  *   condition({ if: { flag: "metRiley" }, then: [say(...)] })
@@ -200,8 +184,8 @@ export function input(key, options = {}) {
  *   condition({ if: { any: [{ flag: "a" }, { flag: "b" }] }, then: [say(...)] })
  *   condition({ if: (v) => v.gold >= 5, then: [say(...)] }) // JS escape hatch
  *
- * Legacy jump form remains available:
- *   condition({ flag: "metRiley", then: "yes_mark", else: "no_mark" })
+ * Target form remains available:
+ *   condition({ if: { flag: "metRiley" }, then: "yes_mark", else: "no_mark" })
  *
  * @param {object} definition - Conditional branch definition.
  * @returns {object} Condition command.

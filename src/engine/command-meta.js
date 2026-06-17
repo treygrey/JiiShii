@@ -18,13 +18,10 @@ export const BASE_COMMAND_META = {
   surface: { kind: "stage" },
   openLayer: { kind: "stage" },
   closeLayer: { kind: "stage" },
-  pushSurface: { kind: "stage" },
-  popSurface: { kind: "stage" },
 
   // --- Flow control ---
   label: { kind: "flow" },
   goto: { kind: "flow" },
-  jump: { kind: "flow" },
   condition: { kind: "flow" },
   endScene: { kind: "flow" },
   pause: { kind: "flow", surface: null, needsSurface: false, blocks: true },

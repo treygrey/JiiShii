@@ -1,17 +1,4 @@
 /**
- * Switches the active presentation surface.
- *
- * @param {"texting" | "irl" | "streaming"} id - Surface id.
- * @returns {object} Surface command.
- */
-export function surface(id) {
-  return {
-    type: "surface",
-    id
-  };
-}
-
-/**
  * Sets the base stage (the medium of the scene). Replaces the current stack.
  *
  * @param {"texting" | "irl" | "streaming"} id - Stage id.
@@ -54,7 +41,7 @@ export function goto(target) {
 }
 
 /**
- * Names a spot in the scene that goto() can jump to. Alias of label.
+ * Names a spot in the scene that goto() can route to.
  *
  * @param {string} name - Mark name.
  * @returns {object} Label command.
@@ -64,50 +51,13 @@ export function mark(name) {
 }
 
 /**
- * Pushes a surface on top of the current one.
- *
- * @param {"texting" | "irl" | "streaming"} id - Surface id.
- * @returns {object} pushSurface command.
- */
-export function pushSurface(id) {
-  return {
-    type: "pushSurface",
-    id
-  };
-}
-
-/**
- * Pops the top surface off the stack.
- *
- * @returns {object} popSurface command.
- */
-export function popSurface() {
-  return {
-    type: "popSurface"
-  };
-}
-
-/**
- * Creates a label target for jumps.
- *
- * @param {string} id - Label id.
- * @returns {object} Label command.
- */
-export function label(id) {
-  return {
-    type: "label",
-    id
-  };
-}
-
-/**
  * Creates a prominent forward-transition button. Clicking it loads the target
  * scene id when one is registered, otherwise it ends the current scene. Used
- * for authored convergence jumps (internal label target) and end-of-scene
+ * for authored convergence routes (internal mark target) and end-of-scene
  * continue buttons (scene id or null).
  *
  * @param {string} text - Button label. Use "__continue" for an internal jump.
- * @param {string | null} [target] - Scene id, label, or null to end the scene.
+ * @param {string | null} [target] - Scene id, mark, or null to end the scene.
  * @returns {object} Transition command.
  */
 export function transition(text, target = null) {
@@ -131,19 +81,6 @@ export function pause(duration = 1000, options = {}) {
     ...options,
     type: "pause",
     duration
-  };
-}
-
-/**
- * Creates a direct jump command.
- *
- * @param {string} target - Target label id.
- * @returns {object} Jump command.
- */
-export function jump(target) {
-  return {
-    type: "jump",
-    target
   };
 }
 

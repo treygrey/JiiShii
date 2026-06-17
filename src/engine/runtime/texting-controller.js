@@ -75,7 +75,7 @@ export function resolveSceneContact(scene) {
  */
 export function sceneStartsInTexting(scene) {
   for (const command of scene?.script ?? []) {
-    if (command.type === "surface" || command.type === "openLayer" || command.type === "pushSurface") {
+    if (command.type === "surface" || command.type === "openLayer") {
       return command.id === "texting";
     }
   }

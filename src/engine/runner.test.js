@@ -5,8 +5,7 @@ import {
   stage,
   open,
   close,
-  label,
-  jump,
+  goto,
   transition,
   set,
   mark,
@@ -1075,8 +1074,8 @@ describe("SceneRunner surface stack", () => {
   it("throws clearly when replay reconstruction cannot advance", () => {
     const { runner } = makeRunner([
       stage("irl"),
-      label("loop"),
-      jump("loop"),
+      mark("loop"),
+      goto("loop"),
       say("alex", "unreachable")
     ]);
 
@@ -1205,10 +1204,10 @@ describe("SceneRunner author conditions", () => {
     const { runner } = makeRunner([]);
     runner.state.vars.metAlex = "0";
 
-    expect(runner.evaluateCondition(condition({ flag: "metAlex", then: "yes", else: "no" }))).toBe(false);
+    expect(runner.evaluateCondition(condition({ if: { flag: "metAlex" }, then: "yes", else: "no" }))).toBe(false);
 
     runner.state.vars.metAlex = "yes";
-    expect(runner.evaluateCondition(condition({ flag: "metAlex", then: "yes", else: "no" }))).toBe(true);
+    expect(runner.evaluateCondition(condition({ if: { flag: "metAlex" }, then: "yes", else: "no" }))).toBe(true);
   });
 
   it("compares author values without requiring strict JavaScript equality", () => {
@@ -1216,19 +1215,19 @@ describe("SceneRunner author conditions", () => {
     runner.state.vars.emptyScore = "";
     runner.state.vars.numericScore = "50";
 
-    expect(runner.evaluateCondition(condition({ var: "emptyScore", is: "0", then: "yes", else: "no" }))).toBe(true);
-    expect(runner.evaluateCondition(condition({ var: "numericScore", atLeast: 50, then: "yes", else: "no" }))).toBe(true);
-    expect(runner.evaluateCondition(condition({ var: "numericScore", moreThan: 50, then: "yes", else: "no" }))).toBe(false);
+    expect(runner.evaluateCondition(condition({ if: { var: "emptyScore", is: "0" }, then: "yes", else: "no" }))).toBe(true);
+    expect(runner.evaluateCondition(condition({ if: { var: "numericScore", atLeast: 50 }, then: "yes", else: "no" }))).toBe(true);
+    expect(runner.evaluateCondition(condition({ if: { var: "numericScore", moreThan: 50 }, then: "yes", else: "no" }))).toBe(false);
   });
 
   it("supports text-presence checks for author-facing conditions", () => {
     const { runner } = makeRunner([]);
     runner.state.vars.name = "  ";
 
-    expect(runner.evaluateCondition(condition({ var: "name", hasText: true, then: "yes", else: "no" }))).toBe(false);
+    expect(runner.evaluateCondition(condition({ if: { var: "name", hasText: true }, then: "yes", else: "no" }))).toBe(false);
 
     runner.state.vars.name = "Alex";
-    expect(runner.evaluateCondition(condition({ var: "name", hasText: true, then: "yes", else: "no" }))).toBe(true);
+    expect(runner.evaluateCondition(condition({ if: { var: "name", hasText: true }, then: "yes", else: "no" }))).toBe(true);
   });
 
   it("runs command blocks from condition then/else branches", () => {
@@ -1323,7 +1322,7 @@ describe("SceneRunner author conditions", () => {
     const { runner, compositor } = makeRunner([
       stage("irl"),
       set("route", true),
-      condition({ flag: "route", then: "condition_next_scene", else: "fallback" }),
+      condition({ if: { flag: "route" }, then: "condition_next_scene", else: "fallback" }),
       mark("fallback"),
       say("alex", "Fallback.")
     ]);
@@ -1672,10 +1671,10 @@ describe("SceneRunner advance policy", () => {
     const { runner, renderers } = makeRunner([
       stage("irl"),
       say("alex", "first"),
-      label("decision"),
+      mark("decision"),
       set("saw_line", true),
       choice([{ text: "Continue", goto: "done" }]),
-      label("done"),
+      mark("done"),
       say("alex", "after")
     ], { compositor });
 

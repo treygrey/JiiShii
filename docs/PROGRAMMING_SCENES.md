@@ -1,7 +1,11 @@
 # Programming JiiShii Scenes
 
-This is the author-facing vocabulary for JiiShii scenes. Scene files live in
-`src/game/scenes/` and import from the local game shim:
+This is the full author-facing scene reference for JiiShii. If you are starting
+from zero, read `docs/START_HERE.md` first. If you need data types, structured
+logic, JavaScript predicates, media layers, persistence domains, or command
+family guidance, read `docs/ADVANCED_AUTHORING.md`.
+
+Scene files live in `src/game/scenes/` and import from the local game shim:
 
 ```js
 import {
@@ -594,7 +598,7 @@ On IRL and streaming, `say()` uses the shared VN dialogue box. On texting,
 Dialogue and narration are recorded into runner-owned history, so rollback,
 save/load, and the History overlay describe the same read state.
 
-Lower-level helpers are still available for grouped or legacy commands:
+Lower-level helpers are still available for grouped commands:
 
 ```js
 block([text("alex", "first"), text("alex", "second")])
@@ -769,11 +773,9 @@ Use `mark()` for local labels and `goto()` for local labels or scene ids.
 `transition(text, target)` shows a button. A `null` target ends the current
 scene.
 
-Legacy aliases remain available for old scripts:
-
-- `jump(target)` for `goto(target)`
-- `label(id)` for `mark(id)`
-- `endScene()` for an explicit hard scene end
+Use `endScene()` only when a script needs an explicit hard scene end. Most
+scenes should use `transition("Continue", null)` so the player sees a clear
+forward action.
 
 ## State
 
@@ -883,14 +885,14 @@ strict equality. Empty values, `0`, `"0"`, `false`, `"false"`, `"no"`, and
 Supported condition shapes:
 
 ```js
-condition({ flag: "metAlex", then: "yes", else: "no" })
-condition({ var: "trust", is: 3, then: "yes", else: "no" })
-condition({ var: "trust", isNot: 0, then: "yes", else: "no" })
-condition({ var: "trust", atLeast: 3, then: "yes", else: "no" })
-condition({ var: "trust", atMost: 3, then: "yes", else: "no" })
-condition({ var: "trust", moreThan: 3, then: "yes", else: "no" })
-condition({ var: "trust", lessThan: 3, then: "yes", else: "no" })
-condition({ var: "name", hasText: true, then: "named", else: "anonymous" })
+condition({ if: { flag: "metAlex" }, then: "yes", else: "no" })
+condition({ if: { var: "trust", is: 3 }, then: "yes", else: "no" })
+condition({ if: { var: "trust", isNot: 0 }, then: "yes", else: "no" })
+condition({ if: { var: "trust", atLeast: 3 }, then: "yes", else: "no" })
+condition({ if: { var: "trust", atMost: 3 }, then: "yes", else: "no" })
+condition({ if: { var: "trust", moreThan: 3 }, then: "yes", else: "no" })
+condition({ if: { var: "trust", lessThan: 3 }, then: "yes", else: "no" })
+condition({ if: { var: "name", hasText: true }, then: "named", else: "anonymous" })
 condition({ if: (vars) => vars.trust >= 3 && vars.metAlex, then: "yes", else: "no" })
 ```
 
@@ -949,11 +951,11 @@ choice([
 Use `persistent:` only for cross-playthrough flags. Use `save:` for save-file
 durable variables. Ordinary story variables should stay unprefixed.
 
-`then` and `else` can also be string targets for mark/scene routing. This is the
-legacy form and remains useful when scene structure should split:
+`then` and `else` can also be string targets for mark/scene routing. This is
+useful when scene structure should split:
 
 ```js
-condition({ flag: "metAlex", then: "alex_knows_you", else: "alex_stranger" })
+condition({ if: { flag: "metAlex" }, then: "alex_knows_you", else: "alex_stranger" })
 
 mark("alex_knows_you")
 say("alex", "You came back.")

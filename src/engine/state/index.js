@@ -131,14 +131,3 @@ export function applyVarMutations(vars, mutations = {}) {
     }
   }
 }
-
-/**
- * Back-compat alias. Prefer {@link applyVarMutations}.
- *
- * @param {object} vars - Variable store.
- * @param {object} mutations - Mutations.
- * @returns {void}
- */
-export function applyStatMutations(vars, mutations = {}) {
-  applyVarMutations(vars, mutations);
-}

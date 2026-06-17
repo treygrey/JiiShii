@@ -979,20 +979,6 @@ body {
   opacity: 1;
 }
 
-/* Legacy class kept for backward compat with any external references. */
-.stage-scrim {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(125% 105% at 50% 42%, rgba(8, 8, 10, 0.42), rgba(6, 6, 8, 0.74));
-  opacity: 0;
-  transition: opacity 600ms ease;
-  pointer-events: none;
-}
-
-.stage-scrim.is-visible {
-  opacity: 1;
-}
-
 /* Texting surface — z-index managed by compositor, position stays relative
    so it participates in the stage's stacking context. */
 .texting-shell {

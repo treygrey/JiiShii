@@ -360,7 +360,7 @@ export class LayerCompositor {
    */
   createScrim() {
     const scrim = document.createElement("div");
-    scrim.className = "stage-scrim compositor-scrim";
+    scrim.className = "compositor-scrim";
     scrim.setAttribute("aria-hidden", "true");
     return scrim;
   }

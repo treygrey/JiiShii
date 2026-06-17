@@ -186,7 +186,7 @@ function prefixedSaveVars(saveVars) {
 /**
  * Returns the stable persistence key for one choice option.
  *
- * Prefers the option's own identity (id, then text) over its jump target —
+ * Prefers the option's own identity (id, then text) over its route target —
  * two different options frequently share one target mark, and they must not
  * collapse into a single seen record.
  *
@@ -194,5 +194,5 @@ function prefixedSaveVars(saveVars) {
  * @returns {string} Option key.
  */
 export function choiceOptionKey(option) {
-  return option.id ?? option.text ?? option.goto ?? option.jump;
+  return option.id ?? option.text ?? option.goto;
 }

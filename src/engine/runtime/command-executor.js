@@ -89,18 +89,6 @@ export function executeCommand(runner, command) {
     return;
   }
 
-  if (command.type === "pushSurface") {
-    runner.pushSurface(command.id);
-    runner.state.currentCommandIndex += 1;
-    return;
-  }
-
-  if (command.type === "popSurface") {
-    runner.popSurface();
-    runner.state.currentCommandIndex += 1;
-    return;
-  }
-
   if (command.type === "openPhone") {
     runner.openPhoneApp(command.app ?? "home");
     runner.state.currentCommandIndex += 1;
@@ -181,11 +169,6 @@ export function executeCommand(runner, command) {
 
   if (command.type === "choice") {
     runner.showChoice(command);
-    return;
-  }
-
-  if (command.type === "jump") {
-    runner.jumpTo(command.target);
     return;
   }
 
